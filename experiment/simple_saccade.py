@@ -1031,6 +1031,8 @@ class SimpleSacGui(FsmGui):
         self.num_sac_dir_QDoubleSpinBox.setValue(self.exp_parameter['num_prim_sac_dir'])
         self.first_dir_QDoubleSpinBox.setValue(self.exp_parameter['first_prim_sac_dir'])
         self.iti_QDoubleSpinBox.setValue(self.exp_parameter['ITI'])
+        self.pump_switch_QDoubleSpinBox.setValue(self.exp_parameter['pump_switch_interval'])
+        
 
         
 class SimpleSacGuiProcess(multiprocessing.Process):
