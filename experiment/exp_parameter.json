@@ -1,0 +1,43 @@
+{
+    "simple_saccade": {
+        "horz_offset": 0.0,
+        "vert_offset": 3.0,
+        "max_allow_time": 0.7,
+        "min_fix_time": 0.1,
+        "max_wait_for_fixation": 1.5,
+        "pun_time": 0.1,
+        "time_to_reward": 0.1,
+        "sac_detect_threshold": 100.0,
+        "sac_on_off_threshold": 75.0,
+        "rew_area": 3.9999999999999996,
+        "pursuit_amp": 0.1,
+        "pursuit_dur": 0.1,
+        "prim_sac_amp": 6.0,
+        "num_prim_sac_dir": 8,
+        "first_prim_sac_dir": 0,
+        "ITI": 0.1,
+        "pump_switch_interval": 1.0
+    },
+    "corrective_saccade": {
+        "horz_offset": 0.0,
+        "vert_offset": 0.0,
+        "max_allow_time": 0.7,
+        "min_fix_time": 0.1,
+        "max_wait_for_fixation": 1.5,
+        "pun_time": 0.1,
+        "time_to_reward": 0.1,
+        "sac_detect_threshold": 150.0,
+        "sac_on_off_threshold": 75.0,
+        "rew_area": 3.0,
+        "pursuit_amp": 0.1,
+        "pursuit_dur": 0.1,
+        "prim_sac_amp": 4.0,
+        "num_prim_sac_dir": 8,
+        "first_prim_sac_dir": 0,
+        "corr_sac_amp": 2.0,
+        "num_corr_sac_dir": 8,
+        "first_corr_sac_dir": 0,
+        "ITI": 0.1,
+        "pump_switch_interval": 50
+    }
+}

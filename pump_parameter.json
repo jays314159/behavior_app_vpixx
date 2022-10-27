@@ -1,0 +1,14 @@
+{
+    "pump_2": {
+        "port_address": "COM9",
+        "pump_rate": 12.0,
+        "pump_vol": 0.03,
+        "vol_dispensed": 4.12
+    },
+    "pump_1": {
+        "port_address": "COM8",
+        "pump_rate": 12.0,
+        "pump_vol": 0.03,
+        "vol_dispensed": 7.749999999999945
+    }
+}

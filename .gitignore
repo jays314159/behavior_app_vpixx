@@ -1,0 +1,7 @@
+# Ignore python runtime files
+*.pyc
+*/*/*/__pycache__/
+*/*/__pycache__/
+*/__pycache__/
+# Ignore data
+data/**
