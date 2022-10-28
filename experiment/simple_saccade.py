@@ -57,7 +57,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
 
         # Check if VPixx available; if so, open
         DPxOpen()
-        print('open vpixx')
         tracker.TRACKPixx3().open() # this throws error if not device not open           
         DPxSetTPxAwake()
         DPxSelectDevice('DATAPIXX3')   
@@ -195,7 +194,10 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             print('state = STR_TARGET_PRESENT')
                         if self.t - self.pull_data_t > 10:
                             self.pull_data_t = self.t
-                            self.pull_data()    
+                            self.pull_data()
+                            # Send trial data to GUI
+                            self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
+                            self.init_trial_data()
                     if state == 'STR_TARGET_PRESENT':
 
                         if not left_eye_blink:

@@ -45,10 +45,21 @@ class DataManager(QRunnable):
         '''
 
         data_file = h5py.File(self.data_file_path +'.hdf5','a',libver='latest')
-        trial_grp = data_file.create_group("trial_"+str(self.trial_num))       
-        for key,value in self.trial_data.items():
-            trial_grp.create_dataset(key,data=self.trial_data[key])
-        data_file.close() 
+        group_name = "trial_"+str(self.trial_num)
+        # If trial already exists, append data. Otherwise create new group
+        try:
+            trial_grp = data_file[group_name]
+            appended_data = {}
+            for trial_key,_ in trial_grp.items():
+                self.trial_data[trial_key] = np.append(trial_grp[trial_key][:], self.trial_data[trial_key])
+            del data_file[group_name]
+        except:
+            pass
+        finally:
+            trial_grp = data_file.create_group(group_name)       
+            for key,value in self.trial_data.items():
+                trial_grp.create_dataset(key,data=self.trial_data[key])
+            data_file.close() 
     
     def init_data(self, exp_name, exp_parameter):
         '''
