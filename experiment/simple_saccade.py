@@ -192,7 +192,7 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_present'].append(self.t)
                             state = 'STR_TARGET_PRESENT'    
                             print('state = STR_TARGET_PRESENT')
-                        if self.t - self.pull_data_t > 10:
+                        if self.t - self.pull_data_t > 5:
                             self.pull_data_t = self.t
                             self.pull_data()
                             # Send trial data to GUI
@@ -403,8 +403,14 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             # Send trial data to GUI
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             trial_num += 1
-                                       
-                            break # break the FSM of the current trial and move to the next trial
+                            # while True:
+                            #     if time.perf_counter() - sys_t >= 0.1:
+                            #         break
+                            # break # break the FSM of the current trial and move to the next trial
+                            # Init. trial variables; reset every trial
+                            self.init_trial_data()  
+                            self.trial_data['cal_matrix'] = cal_parameter['cal_matrix']
+                            state = 'INIT'   
                     # Append data 
                     self.trial_data['tgt_time_data'].append(self.t)
                     self.trial_data['tgt_x_data'].append(self.tgt_x)
