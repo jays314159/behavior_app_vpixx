@@ -197,9 +197,12 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_present'].append(self.t)
                             state = 'STR_TARGET_PRESENT'    
                             print('state = STR_TARGET_PRESENT')
-                        if self.t - self.pull_data_t > 10:
+                        if self.t - self.pull_data_t > 5:
                             self.pull_data_t = self.t
                             self.pull_data()    
+                            # Send trial data to GUI
+                            self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
+                            self.init_trial_data()
                     if state == 'STR_TARGET_PRESENT':
 
                         if not left_eye_blink:
@@ -248,7 +251,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         self.tgt_x = self.cue_x
                         self.tgt_y = self.cue_y
                         self.present_tgt_and_pd_tgt()
-                        self.fsm_to_gui_sndr.send(('neutral_beep',0))
+                        lib.playSound(1000,0.1) # neutral beep  
                         state_start_time = self.t
                         state_inter_time = self.t
                         self.trial_data['state_start_t_detect_sac_start'].append(self.t)
@@ -312,20 +315,20 @@ class CorrSacFsmProcess(multiprocessing.Process):
 
                         if (eye_speed < fsm_parameter['sac_on_off_threshold']) and (self.t-state_start_time > 0.005):#25):
                             # Check if saccade made to cue or end tgt.
-                              eye_dist_from_cue_tgt = np.sqrt((self.cue_x-self.eye_x)**2 + (self.cue_y-self.eye_y)**2)
-                              eye_dist_from_end_tgt = np.sqrt((self.end_x-self.eye_x)**2 + (self.end_y-self.eye_y)**2)
-                              
-                              if ((eye_dist_from_cue_tgt < fsm_parameter['rew_area']/2) or (eye_dist_from_end_tgt < fsm_parameter['rew_area']/2)):
-                                  state_start_time = self.t
-                                  state_inter_time = self.t
-                                  self.trial_data['state_start_t_deliver_rew'].append(self.t)
-                                  state = 'DELIVER_REWARD'
-                                  print('state = DELIVER_REWARD')
-                              else:
-                                  state_start_time = self.t
-                                  state_inter_time = self.t
-                                  self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
-                                  state = 'INCORRECT_SACCADE'
+                            eye_dist_from_cue_tgt = np.sqrt((self.cue_x-self.eye_x)**2 + (self.cue_y-self.eye_y)**2)
+                            eye_dist_from_end_tgt = np.sqrt((self.end_x-self.eye_x)**2 + (self.end_y-self.eye_y)**2)
+                            
+                            if ((eye_dist_from_cue_tgt < fsm_parameter['rew_area']/2) or (eye_dist_from_end_tgt < fsm_parameter['rew_area']/2)):
+                                state_start_time = self.t
+                                state_inter_time = self.t
+                                self.trial_data['state_start_t_deliver_rew'].append(self.t)
+                                state = 'DELIVER_REWARD'
+                                print('state = DELIVER_REWARD')
+                            else:
+                                state_start_time = self.t
+                                state_inter_time = self.t
+                                self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
+                                state = 'INCORRECT_SACCADE'
                           # If time runs out before saccade detected, reset the trial
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
@@ -336,9 +339,10 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.pd_state_start_time = self.t
                             self.pd_state = 'PD_ON'                          
                     if state == 'DELIVER_REWARD':
+                        eye_dist_from_cue_tgt = np.sqrt((self.cue_x-self.eye_x)**2 + (self.cue_y-self.eye_y)**2)
                         eye_dist_from_end_tgt = np.sqrt((self.end_x-self.eye_x)**2 + (self.end_y-self.eye_y)**2)
-                        print(eye_dist_from_end_tgt)
                         if eye_dist_from_end_tgt < fsm_parameter['rew_area']/2:
+                            print('dist. from end tgt: ' + str(eye_dist_from_end_tgt))
                             if (trial_num % fsm_parameter['pump_switch_interval']) == 0:
                                 if pump_to_use == 1:
                                     pump_to_use = 2
@@ -346,12 +350,19 @@ class CorrSacFsmProcess(multiprocessing.Process):
                                     pump_to_use = 1
                             self.fsm_to_gui_sndr.send(('pump_' + str(pump_to_use),0))
                                                     
-                            self.fsm_to_gui_sndr.send(('reward_beep',0))
+                            lib.playSound(2000,0.1) # reward beep
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_end_tgt_fixation'].append(self.t)
                             state = 'END_TARGET_FIXATION'     
                             print('state = END_TARGET_FIXATION')
+                        # If animal makes random saccade instead of corrective one, reset trial
+                        elif (eye_dist_from_cue_tgt > fsm_parameter['rew_area']/2) and (eye_dist_from_end_tgt > fsm_parameter['rew_area']/2):
+                            self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
+                            state_start_time = self.t
+                            state_inter_time = self.t
+                            self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                            state = 'STR_TARGET_PURSUIT'
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
                             state_start_time = self.t
@@ -377,7 +388,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             pd_state_start_time = self.t
                             pd_state = 'PD_ON'                       
                     if state == 'INCORRECT_SACCADE':
-                        self.fsm_to_gui_sndr.send(('pun_beep',0))
+                        # self.fsm_to_gui_sndr.send(('pun_beep',0))
                         self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
                         if ((self.t - state_start_time) > fsm_parameter['pun_time']):
                             state_start_time = self.t
@@ -395,8 +406,9 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             # Send trial data to GUI
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             trial_num += 1
-                                       
-                            break # break the FSM of the current trial and move to the next trial
+                            self.init_trial_data()  
+                            self.trial_data['cal_matrix'] = cal_parameter['cal_matrix']
+                            state = 'INIT'   
                     # Append data 
                     self.trial_data['tgt_time_data'].append(self.t)
                     self.trial_data['tgt_x_data'].append(self.tgt_x)
@@ -613,8 +625,8 @@ class CorrSacGui(FsmGui):
                 cue_x = message[1][0]
                 cue_y = message[1][1]
                 self.plot_1_cue.setData([cue_x],[cue_y])
-                end_x = message[1][0]
-                end_y = message[1][1]
+                end_x = message[1][2]
+                end_y = message[1][3]
                 self.plot_1_end.setData([end_x],[end_y])
             if message_title == 'trial_data':
                 self.data_manager.trial_num = message[1]
@@ -626,12 +638,12 @@ class CorrSacGui(FsmGui):
                 self.pump_2.pump_once_QPushButton_clicked() 
             if message_title == 'log':
                 self.log_QPlainTextEdit.appendPlainText(message[1])
-            if message_title == 'neutral_beep':
-                self.neutral_beep.play()
-            if message_title == 'pun_beep':
-                self.pun_beep.play()
-            if message_title == 'reward_beep':
-                self.reward_beep.play()
+            # if message_title == 'neutral_beep':
+            #     self.neutral_beep.play()
+            # if message_title == 'pun_beep':
+            #     self.pun_beep.play()
+            # if message_title == 'reward_beep':
+            #     self.reward_beep.play()
             ######
             if message_title == 'error':
                 print('error received')
