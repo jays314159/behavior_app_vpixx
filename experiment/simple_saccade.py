@@ -245,7 +245,7 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                     if state == 'CUE_TARGET_PRESENT':
                         self.tgt_x = self.cue_x
                         self.tgt_y = self.cue_y
-                        self.present_tgt_and_pd_tgt()
+                        self.fsm_to_screen_sndr.send(('tgt','draw',(self.tgt_x,self.tgt_y)))
                         # self.fsm_to_gui_sndr.send(('neutral_beep',0))
                         lib.playSound(1000,0.1) # neutral beep  
                         state_start_time = self.t
@@ -301,12 +301,8 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                             state = 'INCORRECT_SACCADE'
                             # self.fsm_to_gui_sndr.send(('pun_beep',0))
-                            sys_t = time.perf_counter()
-                            while True:
-                                if time.perf_counter() - sys_t >= 0.1:
-                                    break
+
                             # lib.playSound(200,0.1) # punishment beep
-                            self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
                         else:
                             state_start_time = self.t
                             state_inter_time = self.t
@@ -332,12 +328,7 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                                   self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                                   state = 'INCORRECT_SACCADE'
                                   # self.fsm_to_gui_sndr.send(('pun_beep',0))
-                                  sys_t = time.perf_counter()
-                                  while True:
-                                      if time.perf_counter() - sys_t >= 0.1:
-                                          break
                                   # lib.playSound(200,0.1) # punishment beep
-                                  self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
                           # If time runs out before saccade detected, reset the trial
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
@@ -356,11 +347,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                                 pump_to_use = 1
                         self.fsm_to_gui_sndr.send(('pump_' + str(pump_to_use),0))
                                                 
-                        # self.fsm_to_gui_sndr.send(('reward_beep',0))
-                        sys_t = time.perf_counter()
-                        while True:
-                            if time.perf_counter() - sys_t >= 0.1:
-                                break
                         lib.playSound(2000,0.1) # reward beep
                         state_start_time = self.t
                         state_inter_time = self.t
