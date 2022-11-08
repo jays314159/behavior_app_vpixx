@@ -25,14 +25,13 @@ import app_lib as lib
 from data_manager import DataManager
 
 class SimpleSacFsmProcess(multiprocessing.Process):
-    def __init__(self,exp_name, default_parameter_fnc, fsm_to_screen_sndr, fsm_to_gui_sndr, gui_to_fsm_Q, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
+    def __init__(self,exp_name, default_parameter_fnc, fsm_to_screen_sndr, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
         super().__init__()
         self.exp_name = exp_name
-        print(self.exp_name)
         self.default_parameter_fnc = default_parameter_fnc
         self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.fsm_to_gui_sndr = fsm_to_gui_sndr
-        self.gui_to_fsm_Q = gui_to_fsm_Q
+        self.gui_to_fsm_rcvr = gui_to_fsm_rcvr
         self.stop_exp_Event = stop_exp_Event
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.real_time_data_Array = real_time_data_Array
@@ -55,6 +54,7 @@ class SimpleSacFsmProcess(multiprocessing.Process):
         faulthandler.enable()
         gc.disable()
 
+        data_manager = DataManager()
         # Check if VPixx available; if so, open
         DPxOpen()
         tracker.TRACKPixx3().open() # this throws error if not device not open           
@@ -96,12 +96,16 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                 eye_speed = 0.0
                 bitMask = 0xffffff # for VPixx dout
                 
-            
+                message = self.gui_to_fsm_rcvr.recv()
+                data_manager.data_file_path = message[0]
+                exp_name = message[1]
+                exp_parameter = message[2]  
+                data_manager.init_data(exp_name,exp_parameter)
             # Trial loop
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
                 if self.stop_exp_Event.is_set():
                     run_exp = False
-
+                    data_manager.data_file.close()
                     # Remove all targets
                     self.fsm_to_screen_sndr.send(('all','rm'))
 
@@ -110,7 +114,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                 self.init_trial_data()  
                 self.trial_data['cal_matrix'] = cal_parameter['cal_matrix']
                 state = 'INIT'   
-                
                 # FSM loop
                 while not self.stop_fsm_process_Event.is_set() and run_exp:
                     if self.stop_exp_Event.is_set():
@@ -195,9 +198,9 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         if self.t - self.pull_data_t > 5:
                             self.pull_data_t = self.t
                             self.pull_data()
-                            # Send trial data to GUI
-                            self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
-                            self.init_trial_data()
+                            # # Send trial data to GUI
+                            # self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
+                            # self.init_trial_data()
                     if state == 'STR_TARGET_PRESENT':
 
                         if not left_eye_blink:
@@ -386,8 +389,13 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             # Pull data
                             self.pull_data_t = self.t
                             self.pull_data()
-                            # Send trial data to GUI
-                            self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
+                            # Save trial data
+                            data_manager.save_data(trial_num,self.trial_data)
+                            sys_t = time.perf_counter()
+                            while True:
+                                if time.perf_counter() - sys_t >= 0.2:
+                                    break
+                            # self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             trial_num += 1
                             # while True:
                             #     if time.perf_counter() - sys_t >= 0.1:
@@ -569,6 +577,13 @@ class SimpleSacGui(FsmGui):
     def toolbar_run_QAction_triggered(self):
         self.toolbar_run_QAction.setDisabled(True)
         self.toolbar_stop_QAction.setEnabled(True)
+        
+        # Init. data       
+        # self.data_manager.init_data(self.exp_name, self.exp_parameter)
+        
+        # Send file path
+        self.gui_to_fsm_sndr.send((self.data_manager.data_file_path, self.exp_name, self.exp_parameter))
+        
         # Start FSM
         self.stop_exp_Event.clear()
               
@@ -587,9 +602,7 @@ class SimpleSacGui(FsmGui):
         # print(self.t_data)
         self.t_data.clear()
         print(self.t_data)
-        # Init. data       
-        self.data_manager.init_data(self.exp_name, self.exp_parameter)
-  
+        
         # Start timer to get data from FSM
         self.data_QTimer.start(self.data_rate)
     @pyqtSlot()
@@ -617,10 +630,10 @@ class SimpleSacGui(FsmGui):
                 cue_x = message[1][0]
                 cue_y = message[1][1]
                 self.plot_1_cue.setData([cue_x],[cue_y])
-            if message_title == 'trial_data':
-                self.data_manager.trial_num = message[1]
-                self.data_manager.trial_data = message[2]
-                self.data_manager.save_data()
+            # if message_title == 'trial_data':
+            #     self.data_manager.trial_num = message[1]
+            #     self.data_manager.trial_data = message[2]
+            #     self.data_manager.save_data()
             if message_title == 'pump_1':
                 self.pump_1.pump_once_QPushButton_clicked()  
             if message_title == 'pump_2':

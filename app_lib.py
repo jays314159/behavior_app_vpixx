@@ -70,7 +70,6 @@ def load_parameter(folder_name,file_name,multi_instance,default_parameter_fnc, i
         parameter_file_path - full path of parameter file
                             - e.g., 'C\\Users\\a\\app\\exp_parameter.json'
     '''
-    print(instance_name)
     parameter_file_path = os.path.join(str(Path().absolute()),folder_name,file_name)
     if os.path.exists(parameter_file_path):
         with open(parameter_file_path,'r+') as file:
