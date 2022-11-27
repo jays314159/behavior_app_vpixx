@@ -18,7 +18,7 @@ sys.path.append('../app')
 from pathlib import Path
 import numpy as np
 from collections import deque
-from datetime import datetime
+from datetime import datetime, date
 
 from fsm_gui import FsmGui
 import app_lib as lib
@@ -69,8 +69,10 @@ class SimpleSacFsmProcess(multiprocessing.Process):
         
         # Remove all targets from screen
         self.fsm_to_screen_sndr.send(('all','rm'))
-             
+        
         run_exp = False
+        
+        
         # Process loop
         while not self.stop_fsm_process_Event.is_set():
             if not self.stop_exp_Event.is_set():
@@ -100,12 +102,15 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                 data_manager.data_file_path = message[0]
                 exp_name = message[1]
                 exp_parameter = message[2]  
-                data_manager.init_data(exp_name,exp_parameter)
+                parent_dir = Path(__file__).parent.resolve()
+                data_full_path = Path(parent_dir,'..','data',date.today().strftime("%Y-%m-%d"),exp_name + '_' + datetime.now().strftime("%H%M%S"))
+                data_full_path.mkdir(parents=True,exist_ok=True)
+                # data_manager.init_data(exp_name,exp_parameter)
             # Trial loop
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
                 if self.stop_exp_Event.is_set():
                     run_exp = False
-                    data_manager.data_file.close()
+                    # data_manager.data_file.close()
                     # Remove all targets
                     self.fsm_to_screen_sndr.send(('all','rm'))
 
@@ -119,6 +124,12 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                     if self.stop_exp_Event.is_set():
                         break
                     # Get time       
+                    # DPxUpdateRegCache()
+                    # raw_left_x = numpy.short(DPxGetReg16(0x7C8)) / 256
+                    # raw_left_y = numpy.short(DPxGetReg16(0x7CA)) / 256
+                    # raw_right_x = numpy.short(DPxGetReg16(0x7D2)) / 256
+                    # raw_right_y = numpy.short(DPxGetReg16(0x7D4)) / 256
+                    # self.t = DPxGetTime()
                     self.t = TPxBestPolyGetEyePosition(cal_data, raw_data) # this calls 'DPxUpdateRegCache' as well
                     sys_t = time.perf_counter()
                     while True:
@@ -137,8 +148,10 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         eye_x_data.append(self.eye_x)
                         eye_y_data.append(self.eye_y)
                         if len(vel_t_data)==vel_samp_num:
-                            eye_vel[0] = np.mean(np.diff(eye_x_data)/np.diff(vel_t_data))
-                            eye_vel[1] = np.mean(np.diff(eye_y_data)/np.diff(vel_t_data))
+                            eye_vel[0] = ((eye_x_data[2]-eye_x_data[1])/(vel_t_data[2]-vel_t_data[1]) + (eye_x_data[1]-eye_x_data[0])/(vel_t_data[1]-vel_t_data[0]))/2
+                            eye_vel[1] = ((eye_x_data[2]-eye_y_data[1])/(vel_t_data[2]-vel_t_data[1]) + (eye_y_data[1]-eye_y_data[0])/(vel_t_data[1]-vel_t_data[0]))/2
+                            # eye_vel[0] = np.mean(np.diff(eye_x_data)/np.diff(vel_t_data))
+                            # eye_vel[1] = np.mean(np.diff(eye_y_data)/np.diff(vel_t_data))
                             eye_speed = np.sqrt(eye_vel[0]**2 + eye_vel[1]**2)
                     else:
                         self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
@@ -390,11 +403,13 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             self.pull_data_t = self.t
                             self.pull_data()
                             # Save trial data
-                            data_manager.save_data(trial_num,self.trial_data)
-                            sys_t = time.perf_counter()
-                            while True:
-                                if time.perf_counter() - sys_t >= 0.2:
-                                    break
+                            with open(os.path.join(data_full_path,str(trial_num)+'.json'),'w') as file:
+                                json.dump(self.trial_data,file,indent=4)
+                            # data_manager.save_data(trial_num,self.trial_data)
+                            # sys_t = time.perf_counter()
+                            # while True:
+                            #     if time.perf_counter() - sys_t >= 0.2:
+                            #         break
                             # self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             trial_num += 1
                             # while True:
@@ -580,7 +595,7 @@ class SimpleSacGui(FsmGui):
         
         # Init. data       
         # self.data_manager.init_data(self.exp_name, self.exp_parameter)
-        
+
         # Send file path
         self.gui_to_fsm_sndr.send((self.data_manager.data_file_path, self.exp_name, self.exp_parameter))
         
