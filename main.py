@@ -124,12 +124,11 @@ class ScreenProcess(multiprocessing.Process):
         file_path = os.path.join(str(Path().absolute()), 'monitor_setting.json')
         with open(file_path,'r') as file:
             setting = json.load(file)
-        this_monitor = monitors.Monitor(setting['monitor_name'])
-        this_monitor.setDistance(setting['monitor_distance'])
-        this_monitor.setWidth(setting['monitor_width'])
         self.refresh_rate = setting['monitor_refresh_rate']
-        self.window = visual.Window(size=setting['monitor_size'], screen=setting['monitor_num'], allowGUI=False, monitor=this_monitor, color='white',
-                                    units='deg', winType='glfw', fullscr=True, checkTiming=False, waitBlanking=False)
+        this_monitor = monitors.Monitor(setting['monitor_name'], width=setting['monitor_width'], distance=setting['monitor_distance'])
+        this_monitor.setSizePix(setting['monitor_size'])
+        self.window = visual.Window(size=setting['monitor_size'],screen=setting['monitor_num'], allowGUI=False, color='white', monitor=this_monitor,
+                                    units='deg', winType='glfw', fullscr=False, checkTiming=False, waitBlanking=False)
         self.window.flip()
         # Make targets
         self.tgt = {}
@@ -221,6 +220,7 @@ if __name__ == '__main__':
         fsm_to_screen_rcvr, fsm_to_screen_sndr = multiprocessing.Pipe(duplex=False)
         ######
         try:
+            multiprocessing.set_start_method('spawn')
             screen_process = ScreenProcess(main_to_screen_rcvr,fsm_to_screen_rcvr)
             main_process = MainProcess(main_to_screen_sndr,fsm_to_screen_sndr)
             main_process.start()        
