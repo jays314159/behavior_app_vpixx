@@ -50,10 +50,10 @@ class SimpleSacFsmProcess(multiprocessing.Process):
         # self.pull_data_t = 0 # keep track of when data was pulled last from VPixx
     
     def run(self):
-        import faulthandler
-        faulthandler.disable()
-        faulthandler.enable()
-        gc.disable()
+        # import faulthandler
+        # faulthandler.disable()
+        # faulthandler.enable()
+        # gc.disable()
 
         # Check if VPixx available; if so, open
         DPxOpen()
