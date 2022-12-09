@@ -507,9 +507,9 @@ class SimpleSacFsmProcess(multiprocessing.Process):
         
 class SimpleSacGui(FsmGui):
     def __init__(self,exp_name, fsm_to_screen_sndr, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):        
-        import faulthandler
-        faulthandler.disable()
-        faulthandler.enable()
+        # import faulthandler
+        # faulthandler.disable()
+        # faulthandler.enable()
         
         self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
