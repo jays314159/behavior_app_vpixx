@@ -21,16 +21,16 @@ import numpy as np
 from fsm_gui import FsmGui
 import app_lib as lib
 
-class Fsm_calBiasThreadSignals(QObject):
+class Fsm_calRefineThreadSignals(QObject):
     to_main_thread = pyqtSignal(object)
 
-class Fsm_calBiasThread(QRunnable):
+class Fsm_calRefineThread(QRunnable):
     def __init__(self, fsm_to_screen_sndr):
         super().__init__()
         self.cal_matrix = []
         self.init_fsm_parameter()
         self.fsm_to_screen_sndr = fsm_to_screen_sndr
-        self.signals = Fsm_calBiasThreadSignals()
+        self.signals = Fsm_calRefineThreadSignals()
         self.setAutoDelete(False) # if True, the object of this thread worker is deleted after finishing thread
     
         # Init var.
@@ -158,11 +158,11 @@ class Fsm_calBiasThread(QRunnable):
         self.fsm_parameter['auto_pump'] = True
         
         
-class Fsm_calBiasGui(FsmGui):
+class Fsm_calRefineGui(FsmGui):
     def __init__(self,fsm_to_screen_sndr, stop_fsm_process_Event):
         self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.stop_fsm_process_Event = stop_fsm_process_Event
-        super(Fsm_calBiasGui,self).__init__(self.fsm_to_screen_sndr, self.stop_fsm_process_Event)
+        super(Fsm_calRefineGui,self).__init__(self.fsm_to_screen_sndr, self.stop_fsm_process_Event)
         
         self.init_gui()
 
@@ -198,7 +198,7 @@ class Fsm_calBiasGui(FsmGui):
             self.log_QPlainTextEdit.appendPlainText('No calibration found. Please calibrate first.')
         
         # Initialize fsm thread        
-        self.fsm_thread = Fsm_calBiasThread(self.fsm_to_screen_sndr)
+        self.fsm_thread = Fsm_calRefineThread(self.fsm_to_screen_sndr)
     #%% SIGNALS
         self.data_QTimer.timeout.connect(self.data_QTimer_timeout)
         self.fsm_thread.signals.to_main_thread.connect(self.receive_fsm_signal)
@@ -671,14 +671,14 @@ class Fsm_calBiasGui(FsmGui):
         self.plot_2_eye_x_selected.setData(np.zeros(0), np.zeros(0))
         self.plot_2_eye_y_selected.setData(np.zeros(0), np.zeros(0))
         
-class Fsm_calBiasProcess(multiprocessing.Process):
+class Fsm_calRefineProcess(multiprocessing.Process):
     def __init__(self, fsm_to_screen_sndr, stop_fsm_process_Event, parent=None):
-        super(Fsm_calBiasProcess,self).__init__(parent)
+        super(Fsm_calRefineProcess,self).__init__(parent)
         self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.stop_fsm_process_Event = stop_fsm_process_Event
     def run(self):  
         fsm_app = QApplication(sys.argv)
-        fsm_app_gui = Fsm_calBiasGui(self.fsm_to_screen_sndr, self.stop_fsm_process_Event)
+        fsm_app_gui = Fsm_calRefineGui(self.fsm_to_screen_sndr, self.stop_fsm_process_Event)
         fsm_app_gui.show()
         sys.exit(fsm_app.exec())
         

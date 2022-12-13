@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QToolBar, QAction
 from psychopy import monitors, visual, core
 
 from calibration.calibration import Fsm_calProcess
-from calibration.bias import Fsm_calBiasProcess
+from calibration.refinement import Fsm_calRefineProcess
 from experiment.simple_saccade import SimpleSacGuiProcess, SimpleSacFsmProcess, SimpleSacGui
 from experiment.corr_saccade import CorrSacGuiProcess, CorrSacFsmProcess, CorrSacGui
 
@@ -34,14 +34,14 @@ class MainGui(QMainWindow):
         self.menu_exp.addAction(self.corr_sac_QAction)
         self.cal_QAction = QAction('Calibration',self)
         self.menu_cal.addAction(self.cal_QAction)
-        self.bias_cal_QAction = QAction('Bias',self)
-        self.menu_cal.addAction(self.bias_cal_QAction)
+        self.refine_cal_QAction = QAction('Refinement',self)
+        self.menu_cal.addAction(self.refine_cal_QAction)
         
     #%% Signals
         self.simple_sac_QAction.triggered.connect(self.simple_sac_QAction_triggered)
         self.corr_sac_QAction.triggered.connect(self.corr_sac_QAction_triggered)
         self.cal_QAction.triggered.connect(self.cal_QAction_triggered)
-        self.bias_cal_QAction.triggered.connect(self.bias_cal_QAction_triggered)
+        self.refine_cal_QAction.triggered.connect(self.refine_cal_QAction_triggered)
         
     #%% Slots
     def simple_sac_QAction_triggered(self):
@@ -82,10 +82,10 @@ class MainGui(QMainWindow):
         fsm_process = Fsm_calProcess(cal_name,self.fsm_to_screen_sndr, stop_fsm_process_Event)
         fsm_process.start()
     
-    def bias_cal_QAction_triggered(self):
+    def refine_cal_QAction_triggered(self):
               
         stop_fsm_process_Event = multiprocessing.Event()
-        fsm_process = Fsm_calBiasProcess(self.fsm_to_screen_sndr, stop_fsm_process_Event)
+        fsm_process = Fsm_calRefineProcess(self.fsm_to_screen_sndr, stop_fsm_process_Event)
         fsm_process.start()
     
         
