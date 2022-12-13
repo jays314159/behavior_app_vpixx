@@ -80,7 +80,7 @@ def load_parameter(folder_name,file_name,multi_instance,default_parameter_fnc, i
                     parameter = all_parameter[instance_name]
                 # If specific instance of parameters not exist
                 else:
-                    parameter = default_parameter_fnc()
+                    parameter = default_parameter_fnc(instance_name)
                     all_parameter[instance_name] = parameter
                     file.seek(0)
                     json.dump(all_parameter,file,indent=4)
@@ -88,7 +88,7 @@ def load_parameter(folder_name,file_name,multi_instance,default_parameter_fnc, i
                 parameter = json.load(file)
     # If no file exists
     else:
-        parameter = default_parameter_fnc()
+        parameter = default_parameter_fnc(instance_name)
         with open(parameter_file_path,'w') as file:
             if multi_instance == True:
                 json.dump({instance_name: parameter}, file, indent=4)
@@ -99,17 +99,34 @@ def load_parameter(folder_name,file_name,multi_instance,default_parameter_fnc, i
 
 
 
-def set_default_cal_parameter():
+def set_default_cal_parameter(cal_name):
     '''
     # Arguments:
     #     parameter - empty or partially filled dictionary of default calibration parameters
     Returns:
         parameter - dictionary of default calibration parameters 
     '''
-    parameter = {}
-    parameter['cal_matrix'] = [[0,0,0],[0,0,0],[0,0,0]]
-    parameter['cal_status'] = False
-    # set_default_tgt_parameter(parameter)
+    if cal_name == 'calibration':
+        parameter = {'start_x': 0,
+                     'start_y': 0,
+                     'pursuit_amp': 0.7,
+                     'pursuit_dur': 0.7,
+                     'is_pursuit_tgt': True,
+                     'cal_dur': 1,
+                     'ITI': 1,
+                     'tgt_1': [-5,5,True],
+                     'tgt_2': [0,5,True],
+                     'tgt_3': [5,5,True],
+                     'tgt_4': [-5,0,True],
+                     'tgt_5': [0,0,True],
+                     'tgt_6': [5,0,True],
+                     'tgt_7': [-5,-5,True],
+                     'tgt_8': [0,-5,True],
+                     'tgt_9': [5,-5,True],
+                     'cal_matrix': [[0,0,0],[0,0,0],[0,0,0]],
+                     'cal_status': False,
+                     'RMSE': 0.0
+                     }
     return parameter
     
 def inpolygon(xq, yq, xv, yv):
