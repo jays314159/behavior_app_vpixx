@@ -82,10 +82,10 @@ class MainGui(QMainWindow):
         fsm_process = Fsm_calProcess(cal_name,self.fsm_to_screen_sndr, stop_fsm_process_Event)
         fsm_process.start()
     
-    def refine_cal_QAction_triggered(self):
-              
+    def refine_cal_QAction_triggered(self):    
         stop_fsm_process_Event = multiprocessing.Event()
-        fsm_process = Fsm_calRefineProcess(self.fsm_to_screen_sndr, stop_fsm_process_Event)
+        cal_name = 'refinement'
+        fsm_process = Fsm_calRefineProcess(cal_name, self.fsm_to_screen_sndr, stop_fsm_process_Event)
         fsm_process.start()
     
         

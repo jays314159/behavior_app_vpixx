@@ -127,6 +127,17 @@ def set_default_cal_parameter(cal_name):
                      'cal_status': False,
                      'RMSE': 0.0
                      }
+    elif cal_name == 'refinement':
+        parameter = {'mode': 'Auto',
+                     'tgt_pos': [0,0],
+                     'tgt_dur': 1,
+                     'center_tgt_pos': [0,0],
+                     'dist_from_center': 4.0,
+                     'tgt_manual_list': [0,0],
+                     'tgt_auto_list': [[0,0]],
+                     'rew_area': 4,
+                     'auto_pump': True
+                    }
     return parameter
     
 def inpolygon(xq, yq, xv, yv):
