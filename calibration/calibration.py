@@ -13,7 +13,7 @@ from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxSelectDevice,DPxUpdateRegCache, DPxSetTPxAwake,\
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetTPxSleep,DPxClose
 
-import multiprocessing, sys, os, json, random, time, copy, ctypes
+import multiprocessing, sys, os, json, random, time, copy, ctypes, math
 sys.path.append('../app')
 from pathlib import Path
 import numpy as np
@@ -42,7 +42,7 @@ class Fsm_calThread(QRunnable):
         self.eye_raw_y = 0
         self.tgt_x = 0
         self.tgt_y = 0
-        self.t = 0
+        self.t = math.nan
         self.tgt_num = 1
         
     @pyqtSlot()
@@ -59,9 +59,10 @@ class Fsm_calThread(QRunnable):
         cal_data, raw_data = lib.VPixx_get_pointers_for_data()
         
         for tgt_idx in range(self.fsm_parameter['num_cal_tgt']):
-            self.tgt_num = tgt_idx + 1
-            if not self.fsm_parameter['tgt_'+str(self.tgt_num)][2]:
+            tgt_num_temp = tgt_idx + 1
+            if not self.fsm_parameter['tgt_'+str(tgt_num_temp)][2]:
                 continue
+            self.tgt_num = tgt_num_temp
             state = 'INIT'
             while self.fsm_parameter['run']:
                 DPxUpdateRegCache() # need to call each loop to update buffer from device
@@ -125,7 +126,8 @@ class Fsm_calThread(QRunnable):
         tracker.TRACKPixx3().close()  
         # Signal completion
         self.signals.to_main_thread.emit(('fsm_done',0))
-
+        # Reset time
+        self.t = math.nan
     def init_fsm_parameter(self):
         self.fsm_parameter = {'run': False,
                               'start_x': 0,
@@ -364,20 +366,10 @@ class Fsm_calGui(FsmGui):
 
     @pyqtSlot()
     def cal_QPushButton_clicked(self):        
-        self.reset_cal_QPushButton.setEnabled(True)
-        self.new_cal = True
-        bias_x = self.cal_tgt_x - self.cal_eye_x
-        bias_y = self.cal_tgt_y - self.cal_eye_y
-        self.new_cal_matrix[2][0] = self.new_cal_matrix[2][0] + bias_x
-        self.new_cal_matrix[2][1] = self.new_cal_matrix[2][1] + bias_y
-        self.log_QPlainTextEdit.appendPlainText('Bias change: '+'({:.1f}'.format(bias_x) + ',' + '{:.1f}'.format(bias_y) + ')')
-        # Disable cal. button
-        self.calibrate_QPushButton.setDisabled(True)
-     
         eye_p_all = np.zeros(shape=(0,3)) # init. of var. to contain eye_x,eye_y,1 columns
         tgt_p_all = np.zeros(shape=(0,3)) # init. of var. to contain target_x,target_y,1 columns
         selected_tgt_idc = np.where(self.currently_selected_tgt_ind)[0]
-        for tgt_idx in selected_tgt_idc:
+        for tgt_idx in range(np.sum(self.currently_selected_tgt_ind)):
             tgt_num = selected_tgt_idc[tgt_idx] + 1
             eye_raw_x = self.data_dict['eye_raw_x_tgt_'+str(tgt_num)]
             eye_raw_y = self.data_dict['eye_raw_y_tgt_'+str(tgt_num)]
@@ -386,7 +378,7 @@ class Fsm_calGui(FsmGui):
             if len(eye_raw_y) > len(selected_data):
                 eye_raw_x = eye_raw_x[:len(selected_data)]
             else:
-                selected_data = selected_data[:len()]
+                selected_data = selected_data[:len(eye_raw_x)]
             if len(eye_raw_y) > len(selected_data):
                 eye_raw_y = eye_raw_y[:len(selected_data)]
             else:
@@ -398,15 +390,16 @@ class Fsm_calGui(FsmGui):
             mean_eye_raw_y_selected = np.mean(eye_raw_y_selected)
             eye_raw_p = np.hstack([mean_eye_raw_x_selected,mean_eye_raw_y_selected,1]) # horz. concat. of x,y,1 
             eye_p_all = np.vstack([eye_p_all, eye_raw_p])
-            tgt_x = self.tgt_widgets_dict['tgt_'+str(tgt_num)+'horz_QDoubleSpinBox'].value()
-            tgt_y = self.tgt_widgets_dict['tgt_'+str(tgt_num)+'vert_QDoubleSpinBox'].value()
+            tgt_x = self.tgt_widgets_dict['tgt_'+str(tgt_num)+'_horz_QDoubleSpinBox'].value()
+            tgt_y = self.tgt_widgets_dict['tgt_'+str(tgt_num)+'_vert_QDoubleSpinBox'].value()
             tgt_p = np.array([tgt_x,tgt_y,1])
             tgt_p_all = np.vstack([tgt_p_all, tgt_p])
         
-        self.cal_parameter['cal_matrix'] = np.linalg.inv(eye_p_all.T@eye_p_all)@eye_p_all.T@tgt_p_all
-        tgt_p_pred = eye_p_all @ self.cal_matrix
+        cal_matrix = np.linalg.inv(eye_p_all.T@eye_p_all)@eye_p_all.T@tgt_p_all
+        self.cal_parameter['cal_matrix'] = cal_matrix.tolist()
+        tgt_p_pred = eye_p_all @ self.cal_parameter['cal_matrix']
         tgt_p_pred = tgt_p_pred[:,[0,1]]
-        self.cal_parameter['RMSE'] = np.sqrt(np.sum(np.square(tgt_p_all[:,[0,1]]-tgt_p_pred[:,[0,1]]))/len(selected_tgt_idc))
+        self.cal_parameter['RMSE'] = np.sqrt(np.sum(np.square(tgt_p_all[:,[0,1]]-tgt_p_pred))/len(selected_tgt_idc))
         self.log_QPlainTextEdit.appendPlainText("RMSE: " + str(self.cal_parameter['RMSE']) + " deg")
         self.cal_parameter['cal_status'] = True
         self.cal_status_QLabel.setText("Calibrated")
@@ -444,25 +437,26 @@ class Fsm_calGui(FsmGui):
         start getting data from fsm thread
         This part is not nominally thread-safe by accessing the variables from 2 diff. threads, 
         but Python's GIL makes it practically so.  
-        '''
-        tgt_num = self.fsm_thread.tgt_num
-        self.data_dict['eye_raw_x_tgt_'+str(tgt_num)].append(self.fsm_thread.eye_raw_x)
-        self.data_dict['eye_raw_y_tgt_'+str(tgt_num)].append(self.fsm_thread.eye_raw_y)
-        self.data_dict['t_abs_tgt_'+str(tgt_num)].append(self.fsm_thread.t)
-        self.data_dict['t_tgt_'+str(tgt_num)].append(\
-                self.data_dict['t_abs_tgt_'+str(tgt_num)][-1] - 
-                self.data_dict['t_abs_tgt_'+str(tgt_num)][0])
-        # Plot data
-        self.plot_1_dict['tgt_'+str(tgt_num)].\
-            setData(np.array(self.data_dict['eye_raw_x_tgt_'+str(tgt_num)]),np.array(self.data_dict['eye_raw_y_tgt_'+str(tgt_num)]))
-        self.plot_1_dict['active'].\
-            setData(np.array(self.data_dict['eye_raw_x_tgt_'+str(tgt_num)]),np.array(self.data_dict['eye_raw_y_tgt_'+str(tgt_num)]))
-        self.plot_2_dict['tgt_x'].\
-            setData(np.array(self.data_dict['t_tgt_'+str(tgt_num)]), np.array(self.data_dict['eye_raw_x_tgt_'+str(tgt_num)]))
-        self.plot_2_dict['tgt_y'].\
-            setData(np.array(self.data_dict['t_tgt_'+str(tgt_num)]), np.array(self.data_dict['eye_raw_y_tgt_'+str(tgt_num)]))
-        self.plot_2_PlotWidget_ViewBox.setRange(xRange=(self.data_dict['t_tgt_'+str(tgt_num)][0],self.data_dict['t_tgt_'+str(tgt_num)][-1]))
-        self.tgt_num_QComboBox.setCurrentText(str(tgt_num))
+        '''   
+        tgt_num = self.fsm_thread.tgt_num 
+        if not math.isnan(self.fsm_thread.t):
+            self.data_dict['eye_raw_x_tgt_'+str(tgt_num)].append(self.fsm_thread.eye_raw_x)
+            self.data_dict['eye_raw_y_tgt_'+str(tgt_num)].append(self.fsm_thread.eye_raw_y)
+            self.data_dict['t_abs_tgt_'+str(tgt_num)].append(self.fsm_thread.t)
+            self.data_dict['t_tgt_'+str(tgt_num)].append(\
+                    self.data_dict['t_abs_tgt_'+str(tgt_num)][-1] - 
+                    self.data_dict['t_abs_tgt_'+str(tgt_num)][0])
+            # Plot data
+            self.plot_1_dict['tgt_'+str(tgt_num)].\
+                setData(np.array(self.data_dict['eye_raw_x_tgt_'+str(tgt_num)]),np.array(self.data_dict['eye_raw_y_tgt_'+str(tgt_num)]))
+            self.plot_1_dict['active'].\
+                setData(np.array(self.data_dict['eye_raw_x_tgt_'+str(tgt_num)]),np.array(self.data_dict['eye_raw_y_tgt_'+str(tgt_num)]))
+            self.plot_2_dict['tgt_x'].\
+                setData(np.array(self.data_dict['t_tgt_'+str(tgt_num)]), np.array(self.data_dict['eye_raw_x_tgt_'+str(tgt_num)]))
+            self.plot_2_dict['tgt_y'].\
+                setData(np.array(self.data_dict['t_tgt_'+str(tgt_num)]), np.array(self.data_dict['eye_raw_y_tgt_'+str(tgt_num)]))
+            self.plot_2_PlotWidget_ViewBox.setRange(xRange=(self.data_dict['t_tgt_'+str(tgt_num)][0],self.data_dict['t_tgt_'+str(tgt_num)][-1]))
+            self.tgt_num_QComboBox.setCurrentText(str(tgt_num))
     
     @pyqtSlot()
     def clear_ROI_QPushButton_clicked(self):
@@ -530,7 +524,7 @@ class Fsm_calGui(FsmGui):
         self.clear_ROI_QPushButton_clicked()
         self.cal_QPushButton.setEnabled(False)
         # Reinitialize checkboxes
-        for tgt_idx in range(self.num_cal_target):
+        for tgt_idx in range(self.num_cal_tgt):
             tgt_num = tgt_idx + 1
             self.tgt_widgets_dict['tgt_'+str(tgt_num)+'_QCheckBox'].setEnabled(True)
         
@@ -636,7 +630,8 @@ class Fsm_calGui(FsmGui):
         if current_tgt_num < self.num_cal_tgt:
             current_tgt_num += 1
         self.tgt_num_QComboBox.setCurrentIndex(current_tgt_num-1)
-        self.plot_2_PlotWidget_ViewBox.setRange(xRange=(self.data_dict['t_tgt_'+str(current_tgt_num)][0],self.data_dict['t_tgt_'+str(current_tgt_num)][-1]))
+        if len(self.data_dict['t_tgt_'+str(current_tgt_num)]) > 0:
+            self.plot_2_PlotWidget_ViewBox.setRange(xRange=(self.data_dict['t_tgt_'+str(current_tgt_num)][0],self.data_dict['t_tgt_'+str(current_tgt_num)][-1]))
         
     @pyqtSlot()
     def tgt_num_QComboBox_down_QShortcut_activated(self):
@@ -644,7 +639,8 @@ class Fsm_calGui(FsmGui):
         if current_tgt_num > 1:
             current_tgt_num -= 1
         self.tgt_num_QComboBox.setCurrentIndex(current_tgt_num-1)
-        self.plot_2_PlotWidget_ViewBox.setRange(xRange=(self.data_dict['t_tgt_'+str(current_tgt_num)][0],self.data_dict['t_tgt_'+str(current_tgt_num)][-1]))
+        if len(self.data_dict['t_tgt_'+str(current_tgt_num)]) > 0:
+            self.plot_2_PlotWidget_ViewBox.setRange(xRange=(self.data_dict['t_tgt_'+str(current_tgt_num)][0],self.data_dict['t_tgt_'+str(current_tgt_num)][-1]))
         
     @pyqtSlot()
     def tgt_QCheckBox_QShortcut_activated(self):
