@@ -13,7 +13,7 @@ from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxSelectDevice,DPxUpdateRegCache, DPxSetTPxAwake,\
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetTPxSleep,DPxClose
 
-import multiprocessing, sys, os, json, random, time, copy, ctypes
+import multiprocessing, sys, os, json, random, time, copy, ctypes, math
 sys.path.append('../app')
 from pathlib import Path
 import numpy as np
@@ -38,7 +38,7 @@ class Fsm_calRefineThread(QRunnable):
         self.eye_y = 0
         self.tgt_x = 0
         self.tgt_y = 0
-        self.t = 0
+        self.t = math.nan
         self.cal_eye_pos = [] # list of eye positions to be used for calibration
                               # that correspond to target positions
         
@@ -126,13 +126,16 @@ class Fsm_calRefineThread(QRunnable):
                     # Concatenate 1s to target and eye arrays
                     tgt_pos = np.array(self.fsm_parameter['tgt_pos'])
                     eye_pos = np.array(self.cal_eye_pos)
-                    tgt_pos_mat = np.hstack([tgt_pos,np.ones(tgt_pos.shape[0],1)])
-                    eye_pos_mat = np.hstack([eye_pos,np.ones(eye_pos.shape[0],1)])
-                    new_cal_matrix = np.linalg.inv(eye_pos_mat.T@eye_pos_mat)@eye_pos_mat.T@tgt_pos_mat
-                    updated_cal_matrix = self.cal_matrix @ self.cal_matrix
-                    eye_pos_pred = eye_pos_mat @ updated_cal_matrix
+                    tgt_pos_mat = np.hstack([tgt_pos,np.ones((tgt_pos.shape[0],1))])
+                    eye_pos_mat = np.hstack([eye_pos,np.ones((eye_pos.shape[0],1))])
+                    # Compute new calibration matrix that goes from the already calibrated eye data to target data
+                    new_cal_matrix = np.linalg.inv(eye_pos_mat.T @ eye_pos_mat) @ eye_pos_mat.T @ tgt_pos_mat
+                    updated_cal_matrix = np.array(self.cal_matrix) @ new_cal_matrix
+                    eye_pos_pred = eye_pos_mat @ new_cal_matrix
                     eye_pos_pred = eye_pos_pred[:,[0,1]]
-                    RMSE = np.sqrt(np.sum(np.square(tgt_pos-eye_pos_pred))/len(num_tgt))
+                    RMSE = np.sqrt(np.sum(np.square(tgt_pos-eye_pos_pred))/num_tgt)
+                    new_cal_matrix = new_cal_matrix.tolist()
+                    self.signals.to_main_thread.emit(('auto_mode_result',self.fsm_parameter['auto_mode'], [new_cal_matrix,RMSE]))
                 elif self.fsm_parameter['auto_mode'] == 'Bias':
                     bias = np.empty((num_tgt,2))
                     for counter_tgt in range(num_tgt):
@@ -142,7 +145,7 @@ class Fsm_calRefineThread(QRunnable):
                         print(eye_pos)
                         bias[counter_tgt] = tgt_pos - eye_pos
                     mean_bias = np.mean(bias, axis=0)
-                    self.signals.to_main_thread.emit(('bias_result',mean_bias))
+                    self.signals.to_main_thread.emit(('auto_mode_result',self.fsm_parameter['auto_mode'], [mean_bias]))
                     print(mean_bias)
         # Remove all targets
         self.fsm_to_screen_sndr.send(('all','rm'))
@@ -157,7 +160,10 @@ class Fsm_calRefineThread(QRunnable):
         tracker.TRACKPixx3().close()  
         # Signal completion
         self.signals.to_main_thread.emit(('fsm_done',0))
-
+        # Reset time
+        self.t = math.nan
+        # Init. var
+        self.cal_eye_pos = []
     def init_fsm_parameter(self):
         self.fsm_parameter = {}
         self.fsm_parameter['run'] = False
@@ -186,7 +192,8 @@ class Fsm_calRefineGui(FsmGui):
         self.cal_tgt_x = 0
         self.cal_tgt_y = 0
         self.new_cal = False # indicates whether new calibration done
-                
+        self.new_RMSE = 0.0        
+        
         # ROI plots
         self.plot_1_ROI = self.plot_1_PlotWidget.plot(np.zeros((0)), np.zeros((0)),\
             pen=pg.mkPen(color='m', width=2, style=QtCore.Qt.SolidLine),symbol='o', symbolSize=3, symbolBrush='m', symbolPen=None)
@@ -214,9 +221,10 @@ class Fsm_calRefineGui(FsmGui):
         self.default_dist_QDoubleSpinBox.setValue(self.refine_parameter['dist_from_center'])
         self.default_rew_area_QDoubleSpinBox.setValue(self.refine_parameter['rew_area'])
         self.tgt_auto_list = self.refine_parameter['tgt_auto_list']
-        if len(self.tgt_list) > 0: 
-            for x,y in self.tgt_list:
-                self.tgt_list_QPlainTextEdit.appendPlainText('(' + '{:.1f}'.format(x) + ',' + '{:.1f}'.format(y) + ')') # for display purpose only
+        self.auto_pump_QCheckBox.setChecked(self.refine_parameter['auto_pump'])
+        if len(self.tgt_auto_list) > 0: 
+            for x,y in self.tgt_auto_list:
+                self.tgt_fsm_list_QPlainTextEdit.appendPlainText('(' + '{:.1f}'.format(x) + ',' + '{:.1f}'.format(y) + ')') # for display purpose only
         if not self.cal_parameter['cal_status']:
             self.toolbar_run_QAction.setDisabled(True)
             self.log_QPlainTextEdit.appendPlainText('No calibration found. Please calibrate first.')
@@ -243,17 +251,19 @@ class Fsm_calRefineGui(FsmGui):
         # Sidepanel 
         self.tgt_pos_add_QPushButton.clicked.connect(self.tgt_pos_add_QPushButton_clicked)
         self.add_default_tgt_QPushButton.clicked.connect(self.add_default_tgt_QPushButton_clicked)
-        self.reset_tgt_list_QPushButton.clicked.connect(self.reset_tgt_list_QPushButton_clicked)
+        self.reset_tgt_fsm_list_QPushButton.clicked.connect(self.reset_tgt_fsm_list_QPushButton_clicked)
     #%% SLOTS
     @pyqtSlot()
     def toolbar_run_QAction_triggered(self):
         # Save parameter
+        self.refine_parameter['mode'] = self.cal_mode_QComboBox.currentText()
         self.refine_parameter['tgt_pos'] = [self.tgt_pos_x_QDoubleSpinBox.value(),self.tgt_pos_y_QDoubleSpinBox.value()]
         self.refine_parameter['tgt_dur'] = self.tgt_dur_QDoubleSpinBox.value()
         self.refine_parameter['center_tgt_pos'] = [self.default_center_pos_x_QDoubleSpinBox.value(),self.default_center_pos_y_QDoubleSpinBox.value()]
         self.refine_parameter['dist_from_center'] = self.default_dist_QDoubleSpinBox.value()
         self.refine_parameter['rew_area'] = self.default_rew_area_QDoubleSpinBox.value()
         self.refine_parameter['tgt_auto_list'] = self.tgt_auto_list
+        self.refine_parameter['auto_pump'] = self.auto_pump_QCheckBox.isChecked()
         with open(self.parameter_file_path,'r') as file:
             all_parameter = json.load(file)
         all_parameter[self.cal_name] = self.refine_parameter  
@@ -265,27 +275,31 @@ class Fsm_calRefineGui(FsmGui):
         if ((cal_mode == 'Auto') or (cal_mode == 'Test')) and (len(self.tgt_auto_list) == 0):
             self.log_QPlainTextEdit.appendPlainText('No target added.')
             return
+        # Auto, full calibration mode needs more than 5 targets
+        elif (cal_mode == 'Auto') and (self.cal_auto_mode_QComboBox.currentText() == 'Full') and (len(self.tgt_auto_list) < 5):
+            self.log_QPlainTextEdit.appendPlainText('For full, auto calibration, need more than or equal to 5 targets')
+            return
         else:
-            self.tgt_list = self.tgt_auto_list
+            self.tgt_fsm_list = self.tgt_auto_list
         self.toolbar_run_QAction.setDisabled(True)
         self.toolbar_stop_QAction.setEnabled(True)
         # Add target (manual mode)
         if cal_mode == 'Manual':
-            self.tgt_list.append((self.tgt_pos_x_QDoubleSpinBox.value(),self.tgt_pos_y_QDoubleSpinBox.value()))
-            self.cal_tgt_x = self.tgt_list[0][0]
-            self.cal_tgt_y = self.tgt_list[0][1]
+            self.tgt_fsm_list.append((self.tgt_pos_x_QDoubleSpinBox.value(),self.tgt_pos_y_QDoubleSpinBox.value()))
+            self.cal_tgt_x = self.tgt_fsm_list[0][0]
+            self.cal_tgt_y = self.tgt_fsm_list[0][1]
         # Set parameters
         self.fsm_thread.fsm_parameter['run'] = True
         self.fsm_thread.fsm_parameter['mode'] = self.cal_mode_QComboBox.currentText()
         self.fsm_thread.fsm_parameter['auto_mode'] = self.cal_auto_mode_QComboBox.currentText()
         self.fsm_thread.fsm_parameter['tgt_dur'] = self.tgt_dur_QDoubleSpinBox.value()
-        self.fsm_thread.fsm_parameter['tgt_pos'] = self.tgt_list
+        self.fsm_thread.fsm_parameter['tgt_pos'] = self.tgt_fsm_list
         self.fsm_thread.fsm_parameter['rew_area'] = self.default_rew_area_QDoubleSpinBox.value()
         self.fsm_thread.fsm_parameter['auto_pump'] = self.auto_pump_QCheckBox.isChecked()
         self.fsm_thread.cal_matrix = self.new_cal_matrix
         # Reset target list (manual mode)
         if self.cal_mode_QComboBox.currentText() == 'Manual':
-            self.tgt_list = []
+            self.tgt_fsm_list = []
         # Reset data
         self.eye_x_data.clear()
         self.eye_y_data.clear()
@@ -406,26 +420,34 @@ class Fsm_calRefineGui(FsmGui):
         # Update 'old' cal matrix
         self.old_cal_matrix = copy.deepcopy(self.new_cal_matrix)
         self.cal_parameter['cal_matrix'] = self.old_cal_matrix
-        with open(self.parameter_file_path,'w') as file:
-            json.dump(self.cal_parameter, file, indent=4)
+        self.cal_parameter['RMSE'] = self.new_RMSE
         
+        with open(self.parameter_file_path,'r') as file:
+            all_parameter = json.load(file)
+        all_parameter[self.cal_name] = self.refine_parameter
+        all_parameter['calibration'] = self.cal_parameter  
+        with open(self.parameter_file_path,'w') as file:
+            json.dump(all_parameter, file, indent=4)   
+            
+        self.log_QPlainTextEdit.appendPlainText('Saved calibration and parameters')
     @pyqtSlot()
     def data_QTimer_timeout(self):
         '''
         start getting data from fsm thread
         '''
-        self.eye_x_data.append(self.fsm_thread.eye_x)
-        self.eye_y_data.append(self.fsm_thread.eye_y)
-        self.tgt_x_data.append(self.fsm_thread.tgt_x)
-        self.tgt_y_data.append(self.fsm_thread.tgt_y)
-        self.t_data.append(self.fsm_thread.t)
-        # Plot data
-        self.plot_1_eye.setData(self.eye_x_data,self.eye_y_data)
-        self.plot_1_tgt.setData([self.fsm_thread.tgt_x],[self.fsm_thread.tgt_y])
-        self.plot_2_eye_x.setData(self.t_data,self.eye_x_data)
-        self.plot_2_eye_y.setData(self.t_data,self.eye_y_data)
-        self.plot_2_tgt_x.setData(self.t_data,self.tgt_x_data)
-        self.plot_2_tgt_y.setData(self.t_data,self.tgt_y_data)
+        if not math.isnan(self.fsm_thread.t):
+            self.eye_x_data.append(self.fsm_thread.eye_x)
+            self.eye_y_data.append(self.fsm_thread.eye_y)
+            self.tgt_x_data.append(self.fsm_thread.tgt_x)
+            self.tgt_y_data.append(self.fsm_thread.tgt_y)
+            self.t_data.append(self.fsm_thread.t)
+            # Plot data
+            self.plot_1_eye.setData(self.eye_x_data,self.eye_y_data)
+            self.plot_1_tgt.setData([self.fsm_thread.tgt_x],[self.fsm_thread.tgt_y])
+            self.plot_2_eye_x.setData(self.t_data,self.eye_x_data)
+            self.plot_2_eye_y.setData(self.t_data,self.eye_y_data)
+            self.plot_2_tgt_x.setData(self.t_data,self.tgt_x_data)
+            self.plot_2_tgt_y.setData(self.t_data,self.tgt_y_data)
     @pyqtSlot()
     def clear_ROI_QPushButton_clicked(self):
         self.ROI_x_plot_1 = np.zeros(0)
@@ -451,15 +473,23 @@ class Fsm_calRefineGui(FsmGui):
             self.init_mode_state()
             # Stop timer to stop getting data from fsm thread
             self.data_QTimer.stop()
-        if message == 'bias_result':
-            self.reset_cal_QPushButton.setEnabled(True)
-            self.save_cal_QPushButton.setEnabled(True)
-            self.new_cal = True
-            # Update new calibration
-            bias = signal[1] 
-            self.new_cal_matrix[2][0] = self.new_cal_matrix[2][0] + bias[0]
-            self.new_cal_matrix[2][1] = self.new_cal_matrix[2][1] + bias[1]
-            self.log_QPlainTextEdit.appendPlainText('Auto bias change: '+'({:.2f}'.format(bias[0]) + ',' + '{:.2f}'.format(bias[1]) + ')')
+        if message == 'auto_mode_result':
+            if signal[1] == 'Full':
+                self.reset_cal_QPushButton.setEnabled(True)
+                self.save_cal_QPushButton.setEnabled(True)
+                self.new_cal = True
+                self.new_cal_matrix = signal[2][0]
+                self.new_RMSE = signal[2][1]
+                self.log_QPlainTextEdit.appendPlainText('Old RMSE: ' + '{:.2f}'.format(self.cal_parameter['RMSE']) + ' New RMSE: '+ '{:.2f}'.format(self.new_RMSE)) 
+            elif signal[1] == 'Bias':
+                self.reset_cal_QPushButton.setEnabled(True)
+                self.save_cal_QPushButton.setEnabled(True)
+                self.new_cal = True
+                # Update new calibration
+                bias = signal[2][0] 
+                self.new_cal_matrix[2][0] = self.new_cal_matrix[2][0] + bias[0]
+                self.new_cal_matrix[2][1] = self.new_cal_matrix[2][1] + bias[1]
+                self.log_QPlainTextEdit.appendPlainText('Auto bias change: '+'({:.2f}'.format(bias[0]) + ',' + '{:.2f}'.format(bias[1]) + ')')
             
     def plot_1_PlotWidget_mouseClicked(self, mouseEvent):
         if mouseEvent[0].button() == QtCore.Qt.LeftButton and self.cal_mode_QComboBox.currentText() == 'Manual'\
@@ -520,9 +550,9 @@ class Fsm_calRefineGui(FsmGui):
                 self.add_tgt_to_list(c_x + a*i, c_y + a*j)
                 
     @pyqtSlot()
-    def reset_tgt_list_QPushButton_clicked(self):
+    def reset_tgt_fsm_list_QPushButton_clicked(self):
         self.tgt_auto_list = []
-        self.tgt_list_QPlainTextEdit.clear()
+        self.tgt_fsm_list_QPlainTextEdit.clear()
     #%% GUI
     def init_gui(self):
         # Customize plots
@@ -669,14 +699,14 @@ class Fsm_calRefineGui(FsmGui):
         self.auto_pump_QHBoxLayout.addWidget(self.auto_pump_QCheckBox)
         self.sidepanel_custom_QVBoxLayout.addLayout(self.auto_pump_QHBoxLayout)
         
-        self.tgt_list_QLabel = QLabel('<b>Target List</b>')
-        self.tgt_list_QLabel.setAlignment(Qt.AlignCenter)
-        self.sidepanel_custom_QVBoxLayout.addWidget(self.tgt_list_QLabel)
-        self.tgt_list_QPlainTextEdit = QPlainTextEdit()
-        self.tgt_list_QPlainTextEdit.setReadOnly(True)
-        self.sidepanel_custom_QVBoxLayout.addWidget(self.tgt_list_QPlainTextEdit)
-        self.reset_tgt_list_QPushButton = QPushButton('Reset Target List')
-        self.sidepanel_custom_QVBoxLayout.addWidget(self.reset_tgt_list_QPushButton)
+        self.tgt_fsm_list_QLabel = QLabel('<b>Target List</b>')
+        self.tgt_fsm_list_QLabel.setAlignment(Qt.AlignCenter)
+        self.sidepanel_custom_QVBoxLayout.addWidget(self.tgt_fsm_list_QLabel)
+        self.tgt_fsm_list_QPlainTextEdit = QPlainTextEdit()
+        self.tgt_fsm_list_QPlainTextEdit.setReadOnly(True)
+        self.sidepanel_custom_QVBoxLayout.addWidget(self.tgt_fsm_list_QPlainTextEdit)
+        self.reset_tgt_fsm_list_QPushButton = QPushButton('Reset Target List')
+        self.sidepanel_custom_QVBoxLayout.addWidget(self.reset_tgt_fsm_list_QPushButton)
         
         # Initialize some functions
         if self.cal_mode_QComboBox.currentText() == 'Manual':
@@ -685,7 +715,7 @@ class Fsm_calRefineGui(FsmGui):
             self.init_auto_mode()
     #%% FUNCTIONS
     def add_tgt_to_list(self,x,y):
-        self.tgt_list_QPlainTextEdit.appendPlainText('(' + '{:.1f}'.format(x) + ',' + '{:.1f}'.format(y) + ')') # for display purpose only
+        self.tgt_fsm_list_QPlainTextEdit.appendPlainText('(' + '{:.1f}'.format(x) + ',' + '{:.1f}'.format(y) + ')') # for display purpose only
         self.tgt_auto_list.append((x,y))
     def init_auto_mode(self):
         self.cal_auto_mode_QComboBox.setEnabled(True)
@@ -700,7 +730,7 @@ class Fsm_calRefineGui(FsmGui):
         self.default_rew_area_QDoubleSpinBox.setEnabled(True)
         self.add_default_tgt_QPushButton.setEnabled(True)
         self.auto_pump_QCheckBox.setEnabled(True)
-        self.reset_tgt_list_QPushButton.setEnabled(True)
+        self.reset_tgt_fsm_list_QPushButton.setEnabled(True)
         
     def init_manual_mode(self):
         self.cal_auto_mode_QComboBox.setEnabled(False)
@@ -715,13 +745,13 @@ class Fsm_calRefineGui(FsmGui):
         self.default_rew_area_QDoubleSpinBox.setEnabled(False)
         self.add_default_tgt_QPushButton.setEnabled(False)
         self.auto_pump_QCheckBox.setEnabled(False)
-        self.reset_tgt_list_QPushButton.setEnabled(False)
+        self.reset_tgt_fsm_list_QPushButton.setEnabled(False)
     def init_mode_state(self):
         # Initialize some functions depending on mode state
         if self.cal_mode_QComboBox.currentText() == 'Manual':
             self.init_manual_mode()
             # Clear target list log
-            self.tgt_list_QPlainTextEdit.clear()
+            self.tgt_fsm_list_QPlainTextEdit.clear()
             
         else:
             self.init_auto_mode()
