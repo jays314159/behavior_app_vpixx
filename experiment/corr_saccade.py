@@ -542,7 +542,7 @@ class CorrSacGui(FsmGui):
             self.fsm_to_plot_socket.bind("tcp://192.168.0.2:5555")
 
             self.fsm_to_plot_priority_socket = context.socket(zmq.PUB)
-            self.fsm_to_plot_socket.bind("tcp://192.168.0.2:5556")
+            self.fsm_to_plot_priority_socket.bind("tcp://192.168.0.2:5556")
 
             self.plot_to_fsm_socket = context.socket(zmq.SUB)
             self.plot_to_fsm_socket.bind("tcp://192.168.0.1:5557")
