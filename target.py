@@ -8,9 +8,8 @@ import os, json
 import app_lib as lib
 
 class TargetWidget(QWidget,QObject):
-    def __init__(self,tgt_name, fsm_to_screen_sndr,parent=None):
+    def __init__(self,tgt_name, parent=None):
         super(TargetWidget,self).__init__(parent)
-        self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.tgt_name = tgt_name
         self.init_gui()
         
@@ -135,19 +134,15 @@ class TargetWidget(QWidget,QObject):
         self.main_QVBoxLayout.addWidget(self.save_QPushButton)
     #%% SLOTS
     def tgt_size_QDoubleSpinBox_valueChanged(self):
-        self.fsm_to_screen_sndr.send((self.tgt_name,'change','size',self.tgt_size_QDoubleSpinBox.value()))
         self.parameter['size'] = self.tgt_size_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     def line_width_QDoubleSpinBox_valueChanged(self):
-        self.fsm_to_screen_sndr.send((self.tgt_name,'change','line_width',self.line_width_QDoubleSpinBox.value()))
         self.parameter['line_width'] = self.line_width_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     def fill_color_QComboBox_currentTextChanged(self):
-        self.fsm_to_screen_sndr.send((self.tgt_name,'change','fill_color',self.fill_color_QComboBox.currentText()))
         self.parameter['fill_color'] = self.fill_color_QComboBox.currentText()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     def line_color_QComboBox_currentTextChanged(self):
-        self.fsm_to_screen_sndr.send((self.tgt_name,'change','line_color',self.line_color_QComboBox.currentText()))
         self.parameter['line_color'] = self.line_color_QComboBox.currentText()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     def tgt_pos_x_QDoubleSpinBox_valueChanged(self):
@@ -157,7 +152,6 @@ class TargetWidget(QWidget,QObject):
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
         self.parameter['pos'][1] = self.tgt_pos_y_QDoubleSpinBox.value()      
     def tgt_pos_QPushButton_clicked(self):
-        self.fsm_to_screen_sndr.send((self.tgt_name,'change','pos',(self.tgt_pos_x_QDoubleSpinBox.value(),self.tgt_pos_y_QDoubleSpinBox.value())))
         self.parameter['pos'] = [self.tgt_pos_x_QDoubleSpinBox.value(),self.tgt_pos_y_QDoubleSpinBox.value()]
     def save_QPushButton_clicked(self):
         with open(self.parameter_file_path,'r') as file:
