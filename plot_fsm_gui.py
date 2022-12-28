@@ -17,7 +17,7 @@ from pump import PumpWidget
 from target import TargetWidget
 from sound import Sound
 
-import time, os
+import time
 import numpy as np
 from collections import deque
 
@@ -25,8 +25,7 @@ class FsmGui(QMainWindow):
     def __init__(self,fsm_to_screen_sndr, stop_fsm_process_Event):        
         super(FsmGui,self).__init__(parent=None)
         self.thread_pool = QThreadPool()  
-        self.data_QTimer = QTimer() # timer to periodically get data from FSM process
-        self.receiver_QTimer = QTimer() # timer to periodically get data from diff. PC
+        self.data_QTimer = QTimer()
         
         self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.stop_fsm_process_Event = stop_fsm_process_Event
@@ -46,9 +45,6 @@ class FsmGui(QMainWindow):
         self.toolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.toolbar.setIconSize(QtCore.QSize(25,25))
         self.addToolBar(self.toolbar)  
-        self.toolbar_connect_QAction = QAction(QtGui.QIcon(os.path.join('.', 'icon', 'connect.png')),'')
-        self.toolbar_connect_QAction.setToolTip('Start to receive data from another computer')
-        self.toolbar.addAction(self.toolbar_connect_QAction)
         self.toolbar_run_QAction = QAction(QtGui.QApplication.style().\
             standardIcon(QtGui.QStyle.SP_MediaPlay), "Run", self)
         self.toolbar_run_QAction.setToolTip("Run (<b>R</b>)")
@@ -139,25 +135,24 @@ class FsmGui(QMainWindow):
         self.pump_2 = PumpWidget(2)
         self.sidepanel_QTabWidget.addTab(self.pump_2, 'Pump 2')
         self.sidepanel_QVBoxLayout.addLayout(self.sidepanel_default_QVBoxLayout)
-        self.tgt = TargetWidget('tgt')
+        self.tgt = TargetWidget('tgt',self.fsm_to_screen_sndr)
         self.tgt.tgt_pos_x_QDoubleSpinBox.setDisabled(True)
         self.tgt.tgt_pos_y_QDoubleSpinBox.setDisabled(True)
         self.tgt.tgt_pos_QPushButton.setDisabled(True)
         self.sidepanel_QTabWidget.addTab(self.tgt,'Target')
-        self.pd_tgt = TargetWidget('pd_tgt')
+        self.pd_tgt = TargetWidget('pd_tgt',self.fsm_to_screen_sndr)
         self.sidepanel_QTabWidget.addTab(self.pd_tgt,'PD Target')
 
+        #%% SOUND
+        self.neutral_beep = Sound(1000,0.1)
+        self.pun_beep = Sound(200,0.1)
+        self.reward_beep = Sound(2000,0.1)
     def closeEvent(self,event):
         self.stop_fsm_process_Event.set()
         time.sleep(0.1)
-        try:
-            self.pump_1.clean_exit()
-            self.pump_2.clean_exit()
-        except:
-            pass
-        try:
-            pg.exit() # this should come at the end 
-        except:
-            pass
+        self.pump_1.clean_exit()
+        self.pump_2.clean_exit()
+
+        pg.exit() # this should come at the end 
         
         
