@@ -22,13 +22,12 @@ import numpy as np
 from collections import deque
 
 class FsmGui(QMainWindow):
-    def __init__(self,fsm_to_screen_sndr, stop_fsm_process_Event):        
+    def __init__(self, stop_fsm_process_Event):        
         super(FsmGui,self).__init__(parent=None)
         self.thread_pool = QThreadPool()  
         self.data_QTimer = QTimer() # timer to periodically get data from FSM process
         self.receiver_QTimer = QTimer() # timer to periodically get data from diff. PC
         
-        self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.main_QWidget = QWidget()
         self.setCentralWidget(self.main_QWidget)

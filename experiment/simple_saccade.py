@@ -6,6 +6,8 @@ from PyQt5 import QtCore
 from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxLayout, QDoubleSpinBox, QCheckBox, QPlainTextEdit,\
                             QDialog, QShortcut
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
+from psychopy import monitors, visual, core
+
 import pyqtgraph as pg
 
 from pypixxlib import tracker
@@ -13,7 +15,7 @@ from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxS
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetDoutValue, TPxReadTPxData,\
                               DPxSetTPxSleep, DPxClose
 
-import multiprocessing, sys, os, json, random, time, copy, ctypes, traceback, gc
+import multiprocessing, sys, os, json, random, time, copy, ctypes, traceback, gc, math, zmq
 sys.path.append('../app')
 from pathlib import Path
 import numpy as np
@@ -21,16 +23,16 @@ from collections import deque
 from datetime import datetime
 
 from fsm_gui import FsmGui
+from target import TargetWidget
 import app_lib as lib
 from data_manager import DataManager
 
 class SimpleSacFsmProcess(multiprocessing.Process):
-    def __init__(self,exp_name, default_parameter_fnc, fsm_to_screen_sndr, fsm_to_gui_sndr, gui_to_fsm_Q, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
+    def __init__(self,exp_name, default_parameter_fnc, fsm_to_gui_sndr, gui_to_fsm_Q, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
         super().__init__()
         self.exp_name = exp_name
         print(self.exp_name)
         self.default_parameter_fnc = default_parameter_fnc
-        self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.fsm_to_gui_sndr = fsm_to_gui_sndr
         self.gui_to_fsm_Q = gui_to_fsm_Q
         self.stop_exp_Event = stop_exp_Event
@@ -46,15 +48,29 @@ class SimpleSacFsmProcess(multiprocessing.Process):
         self.start_y = 0
         self.cue_x = 0
         self.cue_y = 0
-        # self.t = 0
-        # self.pull_data_t = 0 # keep track of when data was pulled last from VPixx
+        self.t = math.nan
+        self.pull_data_t = 0 # keep track of when data was pulled last from VPixx
     
     def run(self):
         # import faulthandler
         # faulthandler.disable()
         # faulthandler.enable()
         # gc.disable()
-
+        
+        # Set up exp. screen
+        file_path = os.path.join(str(Path().absolute()), 'monitor_setting.json')
+        with open(file_path,'r') as file:
+            setting = json.load(file)
+        refresh_rate = setting['monitor_refresh_rate']
+        this_monitor = monitors.Monitor(setting['monitor_name'], width=setting['monitor_width'], distance=setting['monitor_distance'])
+        this_monitor.setSizePix(setting['monitor_size'])
+        self.window = visual.Window(size=setting['monitor_size'],screen=setting['monitor_num'], allowGUI=False, color='white', monitor=this_monitor,
+                                units='deg', winType='pyglet', fullscr=True, checkTiming=False, waitBlanking=False)
+        self.window.flip()
+        
+        # Make targets
+        self.update_target()
+        
         # Check if VPixx available; if so, open
         DPxOpen()
         tracker.TRACKPixx3().open() # this throws error if not device not open           
@@ -66,19 +82,17 @@ class SimpleSacFsmProcess(multiprocessing.Process):
         
         # Get pointers to store data from device
         cal_data, raw_data = lib.VPixx_get_pointers_for_data()
-        
-        # Remove all targets from screen
-        self.fsm_to_screen_sndr.send(('all','rm'))
-             
+                 
         run_exp = False
         # Process loop
         while not self.stop_fsm_process_Event.is_set():
             if not self.stop_exp_Event.is_set():
+                # Update targets
+                self.update_target()
                 # Load exp parameter
                 fsm_parameter, parameter_file_path = lib.load_parameter('experiment','exp_parameter.json',True,self.default_parameter_fnc,self.exp_name)
                 # Load calibration
-                cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',False,lib.set_default_cal_parameter)                  
-                run_exp = True
+                cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,lib.set_default_cal_parameter,'calibration')                         
                 # Create target list
                 target_pos_list = lib.make_prim_target(fsm_parameter)
                 num_tgt_pos = len(target_pos_list)
@@ -95,15 +109,15 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                 eye_vel = [0,0]
                 eye_speed = 0.0
                 bitMask = 0xffffff # for VPixx dout
-                
-            
+                dout_val = 0
+                run_exp = True
             # Trial loop
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
                 if self.stop_exp_Event.is_set():
                     run_exp = False
 
                     # Remove all targets
-                    self.fsm_to_screen_sndr.send(('all','rm'))
+                    self.window.flip()
 
                     break
                 # Init. trial variables; reset every trial
@@ -117,10 +131,7 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         break
                     # Get time       
                     self.t = TPxBestPolyGetEyePosition(cal_data, raw_data) # this calls 'DPxUpdateRegCache' as well
-                    sys_t = time.perf_counter()
-                    while True:
-                        if time.perf_counter() - sys_t >= 0.0001:
-                            break
+
                     # Get eye status (blinking)
                     eye_status = DPxGetReg16(0x59A)
                     left_eye_blink = bool(eye_status & (1 << 1)) # right blink, left blink
@@ -140,15 +151,14 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                     else:
                         self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
                         self.eye_y = 9999 
-                    # Send random signal
+                    # Send random signal for alignment
                     if random.random() > 0.5:
-                        random_signal_value = 4
+                        dout_val = 4 # convert to base-2 to determine ch
                     else:
-                        random_signal_value = 0
-                    DPxSetDoutValue(random_signal_value, bitMask)
+                        dout_val = 0
+
                     if state == 'INIT':
                         print('state = INIT')
-                        self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num)))
                         # Set trial parameters
                         tgt_idx = random.randint(0,num_tgt_pos-1) # Randomly pick target
                         start_pos = (fsm_parameter['horz_offset'], fsm_parameter['vert_offset'])
@@ -158,7 +168,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         self.trial_data['start_y'].append(self.start_y)
                         
                         cue_pos = np.array(target_pos_list[tgt_idx]['prim_tgt_pos']) + np.array(start_pos)
-                        print(cue_pos)
                         self.cue_x = cue_pos[0]
                         self.cue_y = cue_pos[1]
                         self.trial_data['cue_x'].append(self.cue_x)
@@ -178,20 +187,25 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                         state = 'STR_TARGET_PURSUIT'
                         print('state = STR_TARGET_PURSUIT')
-                        self.pd_state_start_time = self.t
-                        self.pd_state = 'PD_ON'
+                        dout_val += 1 # digital ch0 for nominal PD signal
                     if state == 'STR_TARGET_PURSUIT':
                         pursuit_x = pursuit_v_x*(self.t-state_start_time) + pursuit_start_x
                         pursuit_y = pursuit_v_y*(self.t-state_start_time) + pursuit_start_y  
                         self.tgt_x = pursuit_x
                         self.tgt_y = pursuit_y
-                        self.fsm_to_screen_sndr.send(('tgt','draw',(self.tgt_x,self.tgt_y)))
+                        self.tgt.pos = (self.tgt_x,self.tgt_y)
+                        self.tgt.draw()
+                        self.pd_tgt.draw()
+                        self.window.flip()
                         if (self.t-state_start_time) > fsm_parameter['pursuit_dur']:
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_present'].append(self.t)
                             state = 'STR_TARGET_PRESENT'    
                             print('state = STR_TARGET_PRESENT')
+                            self.tgt.draw()
+                            self.window.flip()
+                            dout_val -= 1
                         if self.t - self.pull_data_t > 5:
                             self.pull_data_t = self.t
                             self.pull_data()
@@ -199,30 +213,25 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             self.init_trial_data()
                     if state == 'STR_TARGET_PRESENT':
-
                         if not left_eye_blink:
                             self.tgt_x = self.start_x
                             self.tgt_y = self.start_y
-                            # self.present_tgt_and_pd_tgt()
-                            self.fsm_to_screen_sndr.send(('tgt','draw',(self.tgt_x,self.tgt_y)))
+                            self.tgt.pos = (self.tgt_x,self.tgt_y)
+                            self.tgt.draw()
+                            self.window.flip()
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_fixation'].append(self.t)
                             state = 'STR_TARGET_FIXATION'
                             print('state = STR_TARGET_FIXATION')
                         elif (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
-                            self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             state = 'STR_TARGET_PURSUIT'
-                            self.pd_state_start_time = self.t
-                            self.pd_state = 'PD_ON'
+                            dout_val += 1
                     if state == 'STR_TARGET_FIXATION':
-                        
-                        
                         eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
-
                         # If eye not available or fixating at the start target, reset the timer
                         if eye_dist_from_tgt > fsm_parameter['rew_area']/2 or left_eye_blink:
                             state_inter_time = self.t
@@ -232,21 +241,20 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_cue_tgt_present'].append(self.t)
                             print('state = CUE_TARGET_PRESENT')
                             state = 'CUE_TARGET_PRESENT'
-                            self.pd_state_start_time = self.t
-                            self.pd_state = 'PD_ON'
+                            dout_val += 1
                         if (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
-                            self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             state = 'STR_TARGET_PURSUIT'
-                            self.pd_state_start_time = self.t
-                            self.pd_state = 'PD_ON'    
+                            dout_val += 1  
                     if state == 'CUE_TARGET_PRESENT':
                         self.tgt_x = self.cue_x
                         self.tgt_y = self.cue_y
-                        self.fsm_to_screen_sndr.send(('tgt','draw',(self.tgt_x,self.tgt_y)))
-                        # self.fsm_to_gui_sndr.send(('neutral_beep',0))
+                        self.tgt.pos = (self.tgt_x,self.tgt_y)
+                        self.tgt.draw()
+                        self.pd_tgt.draw()
+                        self.window.flip()
                         lib.playSound(1000,0.1) # neutral beep  
                         state_start_time = self.t
                         state_inter_time = self.t
@@ -267,24 +275,17 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                             state = 'INCORRECT_SACCADE'
-                            # self.fsm_to_gui_sndr.send(('pun_beep',0))
-                            self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
-                            
+                            dout_val -= 1                            
                         # If time runs out before saccade detected, play punishment sound and reset the trial
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             ######
                             # lib.playSound(200,0.1) # punishment beep
                             ######
-                            self.fsm_to_screen_sndr.send(('all','rm'))
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             state = 'STR_TARGET_PURSUIT'
-                            self.pd_state_start_time = self.t
-                            self.pd_state = 'PD_ON'
-
                     if state == 'SACCADE':
-                        # self.present_tgt_and_pd_tgt()
                         # Check to see if saccade is in the right direction
                         target_dir_vector = [self.cue_x-self.start_x,self.cue_y-self.start_y]
                         unit_target_dir_vector = target_dir_vector/np.linalg.norm(target_dir_vector)
@@ -300,18 +301,17 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                             state = 'INCORRECT_SACCADE'
-                            # self.fsm_to_gui_sndr.send(('pun_beep',0))
-
-                            # lib.playSound(200,0.1) # punishment beep
+                            dout_val -= 1
                         else:
+                            self.tgt.draw()
+                            self.window.flip()
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_detect_sac_end'].append(self.t)
                             state = 'DETECT_SACCADE_END'
+                            dout_val -= 1
                             print('state = DETECT_SACCADE_END')
                     if state == 'DETECT_SACCADE_END':
-                        # self.present_tgt_and_pd_tgt()
-
                         if (eye_speed < fsm_parameter['sac_on_off_threshold']) and (self.t-state_start_time > 0.005):#25):
                             # Check if saccade made to cue
                               eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
@@ -331,15 +331,12 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                                   # lib.playSound(200,0.1) # punishment beep
                           # If time runs out before saccade detected, reset the trial
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
-                            self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             state = 'STR_TARGET_PURSUIT'
-                            self.pd_state_start_time = self.t
-                            self.pd_state = 'PD_ON'                          
+                            dout_val += 1                           
                     if state == 'DELIVER_REWARD':
-                        # self.present_tgt_and_pd_tgt()
                         if (trial_num % fsm_parameter['pump_switch_interval']) == 0:
                             if pump_to_use == 1:
                                 pump_to_use = 2
@@ -351,28 +348,29 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         state_start_time = self.t
                         state_inter_time = self.t
                         self.trial_data['state_start_t_end_tgt_fixation'].append(self.t)
-                        state = 'END_TARGET_FIXATION'     
+                        state = 'END_TARGET_FIXATION'   
+                        dout_val += 1  
                         print('state = END_TARGET_FIXATION')
                     if state == 'END_TARGET_FIXATION':
-                        # self.present_tgt_and_pd_tgt()
+                        self.tgt.draw()
+                        self.pd_tgt.draw()
+                        self.window.flip()
                         eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
-    
                         if ((self.t - state_inter_time) >= fsm_parameter['min_fix_time']):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_trial_success'].append(self.t)
                             state = 'TRIAL_SUCCESS'
+                            dout_val -= 1    
                             print('state = TRIAL_SUCCESS')
                         # If time runs out before fixation finished, reset the trial
                         elif (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
-                            self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                            state = 'STR_TARGET_PURSUIT'
-                            pd_state_start_time = self.t
-                            pd_state = 'PD_ON'                       
+                            state = 'STR_TARGET_PURSUIT'                     
                     if state == 'INCORRECT_SACCADE':
+                        self.window.flip() # remove all targets
                         if ((self.t - state_start_time) > fsm_parameter['pun_time']):
                             state_start_time = self.t
                             state_inter_time = self.t
@@ -381,18 +379,15 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             pd_state_start_time = self.t
                             pd_state = 'PD_ON'
                     if state == 'TRIAL_SUCCESS':
-                        self.fsm_to_screen_sndr.send(('all','rm')) # remove all targets
+                        self.window.flip() # remove all targets
                         if (self.t-state_start_time) > fsm_parameter['ITI']:
                             # Pull data
                             self.pull_data_t = self.t
                             self.pull_data()
                             # Send trial data to GUI
+                            self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed'))
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             trial_num += 1
-                            # while True:
-                            #     if time.perf_counter() - sys_t >= 0.1:
-                            #         break
-                            # break # break the FSM of the current trial and move to the next trial
                             # Init. trial variables; reset every trial
                             self.init_trial_data()  
                             self.trial_data['cal_matrix'] = cal_parameter['cal_matrix']
@@ -410,11 +405,8 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         self.real_time_data_Array[2] = self.eye_y
                         self.real_time_data_Array[3] = self.tgt_x
                         self.real_time_data_Array[4] = self.tgt_y
-       
-        # # Save current trial data before finishing
-        # self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
-        # Remove all targets
-        self.fsm_to_screen_sndr.send(('all','rm'))
+                    # Send digital out
+                    DPxSetDoutValue(dout_val, bitMask)
         # Turn off VPixx schedule
         lib.VPixx_turn_off_schedule()
         # Close VPixx devices
@@ -425,23 +417,8 @@ class SimpleSacFsmProcess(multiprocessing.Process):
         tracker.TRACKPixx3().close()  
         # Signal successful exit
         self.fsm_to_gui_sndr.send(1) 
-        print('exiting process')
-    def present_tgt_and_pd_tgt(self):
-        '''
-        call at each FSM state whenever target and photodiode target
-        need to be displayed, usually after setting target positions.
-        Photodiode target will erase itself after a specified period and 
-        will be drawn again after 'self.pd_state' is set to 'PD_ON'
-        '''
-        if self.pd_state == 'PD_ON':
-            self.fsm_to_screen_sndr.send(('all','draw',(self.tgt_x,self.tgt_y)))
-            # Display PD target for 100 ms. If duration is too short, 
-            # PD tgt may not become visible
-            if self.t - self.pd_state_start_time > 0.1: 
-                self.pd_state = 'PD_OFF'
-                self.fsm_to_screen_sndr.send(('pd_tgt','rm'))
-        else:
-            self.fsm_to_screen_sndr.send(('tgt','draw',(self.tgt_x,self.tgt_y)))
+        # Reset time
+        self.t = math.nan
  
     def pull_data(self):
         '''
@@ -465,6 +442,21 @@ class SimpleSacFsmProcess(multiprocessing.Process):
 
         TPxSetupTPxSchedule() # flushes data
         print('finished pulling data')
+    
+    def update_target(self):
+        tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,TargetWidget.set_default_parameter,'tgt')
+        pd_tgt_parameter,_ = lib.load_parameter('','tgt_parameter.json',True,TargetWidget.set_default_parameter,'pd_tgt')
+        self.tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg', 
+                      lineColor=tgt_parameter['line_color'],fillColor=tgt_parameter['fill_color'],
+                      lineWidth=tgt_parameter['line_width'])
+        self.tgt.draw() # draw once already, because the first draw may be slower - Poth, 2018   
+        self.pd_tgt = visual.Rect(win=self.window, width=pd_tgt_parameter['size'],height=pd_tgt_parameter['size'], units='deg', 
+                      lineColor=pd_tgt_parameter['line_color'],fillColor=pd_tgt_parameter['fill_color'],
+                      lineWidth=pd_tgt_parameter['line_width'])
+        self.pd_tgt.pos = pd_tgt_parameter['pos']
+        self.pd_tgt.draw()
+        self.window.clearBuffer() # clear the back buffer of previously drawn stimuli - Poth, 2018
+    
     def init_trial_data(self):
         '''
         initializes a dict. of trial data;
@@ -506,31 +498,45 @@ class SimpleSacFsmProcess(multiprocessing.Process):
         self.trial_data['dout_data'] = []
         
 class SimpleSacGui(FsmGui):
-    def __init__(self,exp_name, fsm_to_screen_sndr, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):        
+    def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):        
         # import faulthandler
         # faulthandler.disable()
         # faulthandler.enable()
         
-        self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
         self.gui_to_fsm_sndr = gui_to_fsm_sndr
         self.stop_exp_Event = stop_exp_Event
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.real_time_data_Array = real_time_data_Array
         self.exp_name = exp_name
-        super(SimpleSacGui,self).__init__(self.fsm_to_screen_sndr, self.stop_fsm_process_Event)      
+        super(SimpleSacGui,self).__init__(self.stop_fsm_process_Event)      
         self.init_gui()
-        # Init. var
-        self.eye_x = 0
-        self.eye_y = 0
-        self.tgt_x = 0
-        self.tgt_y = 0
+        
+        # Create socket for ZMQ
+        try:
+            context = zmq.Context()
+            self.fsm_to_plot_socket = context.socket(zmq.PUB)
+            self.fsm_to_plot_socket.bind("tcp://192.168.0.2:5556")
+            
+            self.fsm_to_plot_priority_socket = context.socket(zmq.PUB)
+            self.fsm_to_plot_priority_socket.bind("tcp://192.168.0.2:5557")
+            
+            self.plot_to_fsm_socket = context.socket(zmq.SUB)
+            self.plot_to_fsm_socket.connect("tcp://192.168.0.1:5558")
+            self.plot_to_fsm_socket.subscribe("")
+            self.plot_to_fsm_poller = zmq.Poller()
+            self.plot_to_fsm_poller.register(self.plot_to_fsm_socket, zmq.POLLIN)
+        except Exception as error:
+            self.log_QPlainTextEdit.appendPlainText('Error in starting zmq sockets:')
+            self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
+            self.toolbar_run_QAction.setDisabled(True)
+            self.toolbar_connect_QAction.setDisabled(True)
         
         # Load exp. parameter or set default values
         self.exp_parameter, self.parameter_file_path = lib.load_parameter('experiment','exp_parameter.json',True,self.set_default_exp_parameter,self.exp_name)
         self.update_exp_parameter()
         # Load calibration 
-        self.cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',False,lib.set_default_cal_parameter)
+        self.cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,lib.set_default_cal_parameter,'calibration')
         if not self.cal_parameter['cal_status']:
             self.toolbar_run_QAction.setDisabled(True)
             self.log_QPlainTextEdit.appendPlainText('No calibration found. Please calibrate first.')
@@ -540,8 +546,9 @@ class SimpleSacGui(FsmGui):
     #%% SIGNALS
     def init_signals(self):
         self.data_QTimer.timeout.connect(self.data_QTimer_timeout)
-        self.data_manager.signals.to_main_thread.connect(self.receive_signal)
+        self.receiver_QTimer.timeout.connect(self.receiver_QTimer_timeout)
         # Toolbar
+        self.toolbar_connect_QAction.triggered.connect(self.toolbar_connect_QAction_triggered)
         self.toolbar_run_QAction.triggered.connect(self.toolbar_run_QAction_triggered)
         self.toolbar_stop_QAction.triggered.connect(self.toolbar_stop_QAction_triggered)
         # Sidepanel
@@ -567,31 +574,31 @@ class SimpleSacGui(FsmGui):
     #%% SLOTS
     @pyqtSlot()
     def toolbar_run_QAction_triggered(self):
-        self.toolbar_run_QAction.setDisabled(True)
-        self.toolbar_stop_QAction.setEnabled(True)
-        # Start FSM
-        self.stop_exp_Event.clear()
-              
-        # Disable some user functions
-        self.sidepanel_parameter_QWidget.setDisabled(True)
-        self.tgt.setDisabled(True)
-        self.pd_tgt.setDisabled(True)
-        # Save parameters
-        self.save_QPushButton_clicked()
-
-        # Reset data
-        self.eye_x_data.clear()
-        self.eye_y_data.clear()
-        self.tgt_x_data.clear()
-        self.tgt_y_data.clear()
-        # print(self.t_data)
-        self.t_data.clear()
-        print(self.t_data)
-        # Init. data       
-        self.data_manager.init_data(self.exp_name, self.exp_parameter)
-  
-        # Start timer to get data from FSM
-        self.data_QTimer.start(self.data_rate)
+        # Check to see if plot process ready
+        self.fsm_to_plot_priority_socket.send_pyobj(('confirm_connection',0))
+        # Wait for confirmation for 5 sec.
+        if self.plot_to_fsm_poller.poll(5000):
+            msg = self.plot_to_fsm_socket.recv_pyobj(flags=zmq.NOBLOCK)
+            if msg[0] == 0:
+                self.toolbar_run_QAction.setDisabled(True)
+                self.toolbar_stop_QAction.setEnabled(True)
+                # Start FSM
+                self.stop_exp_Event.clear()            
+                # Disable some user functions
+                self.sidepanel_parameter_QWidget.setDisabled(True)
+                self.tgt.setDisabled(True)
+                self.pd_tgt.setDisabled(True)
+                # Save parameters
+                self.save_QPushButton_clicked()
+                # Init. data    
+                self.fsm_to_plot_priority_socket.send_pyobj(('init_data',self.exp_name, self.exp_parameter))
+                # Start timer to get data from FSM
+                self.data_QTimer.start(self.data_rate)
+                # Tell plot GUI we are starting
+                self.fsm_to_plot_priority_socket.send_pyobj(('run',0))
+        else:
+            self.log_QPlainTextEdit.appendPlainText('No connection with plotting computer.')
+    
     @pyqtSlot()
     def toolbar_stop_QAction_triggered(self):
         self.toolbar_run_QAction.setEnabled(True)
@@ -604,85 +611,49 @@ class SimpleSacGui(FsmGui):
         self.data_QTimer.stop()
         # Ask FSM to stop
         self.stop_exp_Event.set()
+        # Tell plot GUI we are stopping
+        self.fsm_to_plot_priority_socket.send_pyobj(('stop',0))
+        
+    @pyqtSlot()
+    def toolbar_connect_QAction_triggered(self):
+        '''
+        when triggered, start to receive messages from another computer
+        '''
+        self.receiver_QTimer.start(10)
+        self.toolbar_connect_QAction.setDisabled(True)
+        
     @pyqtSlot()
     def data_QTimer_timeout(self):
         '''
         getting data from fsm thread
         '''
         if self.fsm_to_gui_rcvr.poll():
-            message = self.fsm_to_gui_rcvr.recv()
-            message_title = message[0]
-            
-            if message_title == 'tgt_data':
-                cue_x = message[1][0]
-                cue_y = message[1][1]
-                self.plot_1_cue.setData([cue_x],[cue_y])
-            if message_title == 'trial_data':
-                self.data_manager.trial_num = message[1]
-                self.data_manager.trial_data = message[2]
-                self.data_manager.save_data()
-            if message_title == 'pump_1':
-                self.pump_1.pump_once_QPushButton_clicked()  
-            if message_title == 'pump_2':
-                self.pump_2.pump_once_QPushButton_clicked() 
-            if message_title == 'log':
-                self.log_QPlainTextEdit.appendPlainText(message[1])
-            # if message_title == 'neutral_beep':
-            #     # self.neutral_beep.play()
-            #     self.neutral_beep_play()
-            # if message_title == 'pun_beep':
-            #     # self.pun_beep.play()
-            #     self.pun_beep_play()
-            # if message_title == 'reward_beep':
-            #     # self.reward_beep.play()
-            #     self.reward_beep_play()
-            ######
-            if message_title == 'error':
-                print('error received')
-                print(message[1])
-        
+            msg = self.fsm_to_gui_rcvr.recv()
+            msg_title = msg[0]
+            self.fsm_to_plot_priority_socket.send_pyobj(msg)
+            if msg_title == 'log':
+                self.log_QPlainTextEdit.appendPlainText(msg[1])
+
         with self.real_time_data_Array.get_lock():
             t = self.real_time_data_Array[0]
-            self.eye_x = self.real_time_data_Array[1]
-            self.eye_y = self.real_time_data_Array[2]
-            self.tgt_x = self.real_time_data_Array[3]
-            self.tgt_y = self.real_time_data_Array[4]
-        
-        self.eye_x_data.append(self.eye_x)
-        self.eye_y_data.append(self.eye_y)
-        self.tgt_x_data.append(self.tgt_x)
-        self.tgt_y_data.append(self.tgt_y)
-        self.t_data.append(t)
-        # Plot data
-        self.plot_data()
-        # self.plot_1_eye.setData([eye_x],[eye_y])
-        # self.plot_1_tgt.setData([tgt_x],[tgt_y])
-        # self.plot_2_data()
-        # self.plot_2_eye_x.setData(self.t_data,self.eye_x_data)
-        # self.plot_2_eye_y.setData(self.t_data,self.eye_y_data)
-        # self.plot_2_tgt_x.setData(self.t_data,self.tgt_x_data)
-        # self.plot_2_tgt_y.setData(self.t_data,self.tgt_y_data)
+            eye_x = self.real_time_data_Array[1]
+            eye_y = self.real_time_data_Array[2]
+            tgt_x = self.real_time_data_Array[3]
+            tgt_y = self.real_time_data_Array[4]        
+        self.fsm_to_plot_socket.send_pyobj((t,eye_x,eye_y,tgt_x,tgt_y))
     
-    def plot_data(self):
-        self.plot_1_eye.setData([self.eye_x],[self.eye_y])
-        self.plot_1_tgt.setData([self.tgt_x],[self.tgt_y])
-        self.plot_2_eye_x.setData(self.t_data,self.eye_x_data)
-        self.plot_2_eye_y.setData(self.t_data,self.eye_y_data)
-        self.plot_2_tgt_x.setData(self.t_data,self.tgt_x_data)
-        self.plot_2_tgt_y.setData(self.t_data,self.tgt_y_data)
-        
-    def neutral_beep_play(self):
-        self.neutral_beep.play()
-    def pun_beep_play(self):
-        self.pun_beep.play()
-    def reward_beep_play(self):
-        self.reward_beep.play()
-    
-    @pyqtSlot(object)
-    def receive_signal(self, signal):
-        message = signal[0]
-        if message == 'log':
-            self.log_QPlainTextEdit.appendPlainText(signal[1])
+    @pyqtSlot()
+    def receiver_QTimer_timeout(self):
+        if self.plot_to_fsm_poller.poll(1):
+            msg = self.plot_to_fsm_socket.recv_pyobj(flags=zmq.NOBLOCK)
+            msg_title = msg[0]
+            if msg_title == 'run':
+                self.toolbar_run_QAction_triggered()
+            if msg_title == 'stop':
+                self.toolbar_stop_QAction_triggered()
+            if msg_title == 'confirm_connection':
+                self.fsm_to_plot_priority_socket.send_pyobj((0,0))
+
     @pyqtSlot()
     def horz_offset_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['horz_offset'] = self.horz_offset_QDoubleSpinBox.value()
@@ -763,15 +734,12 @@ class SimpleSacGui(FsmGui):
         self.save_QPushButton.setStyleSheet('background-color: #39E547')  
     #%% GUI
     def init_gui(self):
-        # Customiaze plots
-        self.plot_1_cue = self.plot_1_PlotWidget.plot(np.zeros((0)), np.zeros((0)), pen = None,\
-            symbolBrush=None, symbolPen='g', symbol='+',symbolSize=14,name='cue') 
-        self.plot_1_tgt = self.plot_1_PlotWidget.\
-            plot(np.zeros((0)), np.zeros((0)), pen = None,\
-            symbolBrush=None, symbolPen='b', symbol='+',symbolSize=14,name='tgt') 
-        self.plot_1_eye = self.plot_1_PlotWidget.\
-            plot(np.zeros((0)), np.zeros((0)), pen = None,\
-            symbolBrush='k', symbolPen='k', symbol='o',symbolSize=10,name='eye',connect='finite')         
+        # Disable plots
+        self.plot_1_PlotWidget.deleteLater()
+        self.plot_2_PlotWidget.deleteLater()
+        # Disable pumps
+        self.pump_1.deleteLater()
+        self.pump_2.deleteLater()   
         # Side panel
         self.horz_offset_QHBoxLayout = QHBoxLayout()
         self.horz_offset_QLabel = QLabel('Horizontal offset (deg):')
@@ -1030,21 +998,18 @@ class SimpleSacGui(FsmGui):
 
         
 class SimpleSacGuiProcess(multiprocessing.Process):
-    def __init__(self, exp_name, fsm_to_screen_sndr, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, parent=None):
+    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, parent=None):
         super(SimpleSacGuiProcess,self).__init__(parent)
         self.exp_name = exp_name
-        self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
         self.gui_to_fsm_sndr = gui_to_fsm_sndr
         self.stop_exp_Event = stop_exp_Event
         self.real_time_data_Array = real_time_data_Array
         self.stop_fsm_process_Event = stop_fsm_process_Event
     def run(self):  
-        try:
-            app = QApplication(sys.argv)
-            app_gui = SimpleSacGui(self.exp_name, self.fsm_to_screen_sndr, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array)
-            app_gui.show()
-            sys.exit(app.exec())
-        except:
-            traceback.print_exc()
+        app = QApplication(sys.argv)
+        app_gui = SimpleSacGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array)
+        app_gui.show()
+        sys.exit(app.exec())
+
         

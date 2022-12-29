@@ -13,7 +13,7 @@ from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxS
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetDoutValue, TPxReadTPxData,\
                               DPxSetTPxSleep, DPxClose
 
-import multiprocessing, sys, os, json, random, time, copy, ctypes, traceback, gc, zmq
+import multiprocessing, sys, os, json, random, time, copy, ctypes, traceback, gc, zmq, math
 sys.path.append('../app')
 from pathlib import Path
 import numpy as np
@@ -26,12 +26,10 @@ import app_lib as lib
 from data_manager import DataManager
 
 class CorrSacFsmProcess(multiprocessing.Process):
-    def __init__(self,exp_name, default_parameter_fnc, fsm_to_screen_sndr, fsm_to_gui_sndr, gui_to_fsm_Q, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
+    def __init__(self,exp_name, default_parameter_fnc, fsm_to_gui_sndr, gui_to_fsm_Q, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
         super().__init__()
         self.exp_name = exp_name
-        print(self.exp_name)
         self.default_parameter_fnc = default_parameter_fnc
-        self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.fsm_to_gui_sndr = fsm_to_gui_sndr
         self.gui_to_fsm_Q = gui_to_fsm_Q
         self.stop_exp_Event = stop_exp_Event
@@ -47,7 +45,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
         self.start_y = 0
         self.cue_x = 0
         self.cue_y = 0
-        self.t = 0
+        self.t = math.nan
         self.pull_data_t = 0 # keep track of when data was pulled last from VPixx
     
     def run(self):
@@ -64,7 +62,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
         this_monitor = monitors.Monitor(setting['monitor_name'], width=setting['monitor_width'], distance=setting['monitor_distance'])
         this_monitor.setSizePix(setting['monitor_size'])
         self.window = visual.Window(size=setting['monitor_size'],screen=setting['monitor_num'], allowGUI=False, color='white', monitor=this_monitor,
-                                units='deg', winType='pyglet', fullscr=True, checkTiming=False, waitBlanking=True)
+                                units='deg', winType='pyglet', fullscr=True, checkTiming=False, waitBlanking=False)
         self.window.flip()
         
         # Make targets
@@ -118,10 +116,8 @@ class CorrSacFsmProcess(multiprocessing.Process):
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
                 if self.stop_exp_Event.is_set():
                     run_exp = False
-
                     # Remove all targets
                     self.window.flip()
-
                     break
                 # Init. trial variables; reset every trial
                 self.init_trial_data()  
@@ -154,7 +150,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                     else:
                         self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
                         self.eye_y = 9999 
-                    # Send random signal
+                    # Send random signal for alignment
                     if random.random() > 0.5:
                         dout_val = 4 # convert to base-2 to determine ch
                     else:
@@ -209,7 +205,9 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_present'].append(self.t)
-                            state = 'STR_TARGET_PRESENT'    
+                            state = 'STR_TARGET_PRESENT'   
+                            self.tgt.draw()
+                            self.window.flip()
                             dout_val -= 1
                             print('state = STR_TARGET_PRESENT')
                         if self.t - self.pull_data_t > 5:
@@ -290,7 +288,6 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             state = 'STR_TARGET_PURSUIT'
-
                     if state == 'SACCADE':
                         # Check to see if saccade is in the right direction
                         target_dir_vector = [self.cue_x-self.start_x,self.cue_y-self.start_y]
@@ -431,8 +428,6 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         self.real_time_data_Array[4] = self.tgt_y
                     # Send digital out
                     DPxSetDoutValue(dout_val, bitMask)
-        # Save current trial data before finishing
-        self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
         # Turn off VPixx schedule
         lib.VPixx_turn_off_schedule()
         # Close VPixx devices
@@ -443,7 +438,8 @@ class CorrSacFsmProcess(multiprocessing.Process):
         tracker.TRACKPixx3().close()  
         # Signal successful exit
         self.fsm_to_gui_sndr.send(1) 
-
+        # Reset time
+        self.t = math.nan
     def pull_data(self):
         '''
         to be called every 10 s or when a trial finishes, whichever is earlier
@@ -524,28 +520,27 @@ class CorrSacFsmProcess(multiprocessing.Process):
         self.trial_data['dout_data'] = []
         
 class CorrSacGui(FsmGui):
-    def __init__(self,exp_name, fsm_to_screen_sndr, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):        
-        self.fsm_to_screen_sndr = fsm_to_screen_sndr
+    def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):        
+        self.exp_name = exp_name
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
         self.gui_to_fsm_sndr = gui_to_fsm_sndr
         self.stop_exp_Event = stop_exp_Event
         self.stop_fsm_process_Event = stop_fsm_process_Event
-        self.real_time_data_Array = real_time_data_Array
-        self.exp_name = exp_name
-        super(CorrSacGui,self).__init__(self.fsm_to_screen_sndr, self.stop_fsm_process_Event)      
+        self.real_time_data_Array = real_time_data_Array 
+        super(CorrSacGui,self).__init__(self.stop_fsm_process_Event)      
         self.init_gui()
         
         # Create socket for ZMQ
         try:
             context = zmq.Context()
             self.fsm_to_plot_socket = context.socket(zmq.PUB)
-            self.fsm_to_plot_socket.bind("tcp://192.168.0.2:5555")
+            self.fsm_to_plot_socket.bind("tcp://192.168.0.2:5556")
             
             self.fsm_to_plot_priority_socket = context.socket(zmq.PUB)
-            self.fsm_to_plot_priority_socket.bind("tcp://192.168.0.2:5556")
+            self.fsm_to_plot_priority_socket.bind("tcp://192.168.0.2:5557")
             
             self.plot_to_fsm_socket = context.socket(zmq.SUB)
-            self.plot_to_fsm_socket.bind("tcp://192.168.0.1:5557")
+            self.plot_to_fsm_socket.connect("tcp://192.168.0.1:5558")
             self.plot_to_fsm_socket.subscribe("")
             self.plot_to_fsm_poller = zmq.Poller()
             self.plot_to_fsm_poller.register(self.plot_to_fsm_socket, zmq.POLLIN)
@@ -570,7 +565,6 @@ class CorrSacGui(FsmGui):
     def init_signals(self):
         self.data_QTimer.timeout.connect(self.data_QTimer_timeout)
         self.receiver_QTimer.timeout.connect(self.receiver_QTimer_timeout)
-        self.data_manager.signals.to_main_thread.connect(self.receive_signal)
         # Toolbar
         self.toolbar_connect_QAction.triggered.connect(self.toolbar_connect_QAction_triggered)
         self.toolbar_run_QAction.triggered.connect(self.toolbar_run_QAction_triggered)
@@ -618,9 +612,11 @@ class CorrSacGui(FsmGui):
                 # Save parameters
                 self.save_QPushButton_clicked()
                 # Init. data    
-                self.fsm_to_plot_priority_socket.send_pyobj((self.exp_name, self.exp_parameter))
+                self.fsm_to_plot_priority_socket.send_pyobj(('init_data',self.exp_name, self.exp_parameter))
                 # Start timer to get data from FSM
                 self.data_QTimer.start(self.data_rate)
+                # Tell plot GUI we are starting
+                self.fsm_to_plot_priority_socket.send_pyobj(('run',0))
         else:
             self.log_QPlainTextEdit.appendPlainText('No connection with plotting computer.')
     
@@ -636,6 +632,8 @@ class CorrSacGui(FsmGui):
         self.data_QTimer.stop()
         # Ask FSM to stop
         self.stop_exp_Event.set()
+        # Tell plot GUI we are stopping
+        self.fsm_to_plot_priority_socket.send_pyobj(('stop',0))
     
     @pyqtSlot()
     def toolbar_connect_QAction_triggered(self):
@@ -644,11 +642,10 @@ class CorrSacGui(FsmGui):
         '''
         self.receiver_QTimer.start(10)
         self.toolbar_connect_QAction.setDisabled(True)
-        
     @pyqtSlot()
     def data_QTimer_timeout(self):
         '''
-        getting data from fsm thread and send them to another computer
+        getting data from fsm process and send them to another computer
         '''
         if self.fsm_to_gui_rcvr.poll():
             msg = self.fsm_to_gui_rcvr.recv()
@@ -667,14 +664,16 @@ class CorrSacGui(FsmGui):
         
     @pyqtSlot()
     def receiver_QTimer_timeout(self):
-        if self.plot_to_fsm_poller.poll(0):
+        if self.plot_to_fsm_poller.poll(1):
             msg = self.plot_to_fsm_socket.recv_pyobj(flags=zmq.NOBLOCK)
             msg_title = msg[0]
-    @pyqtSlot(object)
-    def receive_signal(self, signal):
-        message = signal[0]
-        if message == 'log':
-            self.log_QPlainTextEdit.appendPlainText(signal[1])
+            if msg_title == 'run':
+                self.toolbar_run_QAction_triggered()
+            if msg_title == 'stop':
+                self.toolbar_stop_QAction_triggered()
+            if msg_title == 'confirm_connection':
+                self.fsm_to_plot_priority_socket.send_pyobj((0,0))
+
     @pyqtSlot()
     def horz_offset_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['horz_offset'] = self.horz_offset_QDoubleSpinBox.value()
@@ -1072,10 +1071,9 @@ class CorrSacGui(FsmGui):
 
         
 class CorrSacGuiProcess(multiprocessing.Process):
-    def __init__(self, exp_name, fsm_to_screen_sndr, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, parent=None):
+    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, parent=None):
         super(CorrSacGuiProcess,self).__init__(parent)
         self.exp_name = exp_name
-        self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
         self.gui_to_fsm_sndr = gui_to_fsm_sndr
         self.stop_exp_Event = stop_exp_Event
@@ -1083,7 +1081,7 @@ class CorrSacGuiProcess(multiprocessing.Process):
         self.stop_fsm_process_Event = stop_fsm_process_Event
     def run(self):  
         app = QApplication(sys.argv)
-        app_gui = CorrSacGui(self.exp_name, self.fsm_to_screen_sndr, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array)
+        app_gui = CorrSacGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array)
         app_gui.show()
         sys.exit(app.exec())
 

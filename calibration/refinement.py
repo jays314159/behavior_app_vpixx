@@ -13,12 +13,13 @@ from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxSelectDevice,DPxUpdateRegCache, DPxSetTPxAwake,\
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetTPxSleep,DPxClose
 
-import multiprocessing, sys, os, json, random, time, copy, ctypes, math
+import multiprocessing, sys, os, json, random, time, copy, ctypes, math, zmq
 sys.path.append('../app')
 from pathlib import Path
 import numpy as np
 
 from fsm_gui import FsmGui
+from target import TargetWidget
 import app_lib as lib
 
 class Fsm_calRefineThreadSignals(QObject):
