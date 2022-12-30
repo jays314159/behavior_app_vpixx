@@ -24,7 +24,7 @@ from fsm_gui import FsmGui
 from target import TargetWidget
 import app_lib as lib
 
-class Fsm_calThread(multiprocessing.Process):
+class CalFsmProcess(multiprocessing.Process):
     def __init__(self, exp_name, fsm_to_gui_sndr, gui_to_fsm_Q, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
         super().__init__()
         self.exp_name = exp_name
@@ -197,7 +197,7 @@ class Fsm_calThread(multiprocessing.Process):
                               'tgt_9': [5,-5,True]
                               }
         
-class Fsm_calGui(FsmGui):
+class CalGuiProcess(FsmGui):
     def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
         self.exp_name = exp_name
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
@@ -205,7 +205,7 @@ class Fsm_calGui(FsmGui):
         self.stop_exp_Event = stop_exp_Event
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.real_time_data_Array = real_time_data_Array
-        super(Fsm_calGui,self).__init__(self.stop_fsm_process_Event)
+        super(CalGuiProcess,self).__init__(self.stop_fsm_process_Event)
         self.init_gui()
         
         # Create socket for ZMQ
@@ -280,8 +280,8 @@ class Fsm_calGui(FsmGui):
             self.cal_status_QLabel.setText("Uncalibrated")
             self.cal_status_QLabel.setStyleSheet('background-color: rgb(255,0,0)')
         
-        # Initialize fsm thread        
-        self.fsm_thread = Fsm_calThread(self.fsm_to_screen_sndr)
+        # # Initialize fsm thread        
+        # self.fsm_thread = Fsm_calThread(self.fsm_to_screen_sndr)
     #%% SIGNALS
         self.data_QTimer.timeout.connect(self.data_QTimer_timeout)
         self.fsm_thread.signals.to_main_thread.connect(self.receive_fsm_signal)

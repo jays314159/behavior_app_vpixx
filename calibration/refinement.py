@@ -25,7 +25,7 @@ import app_lib as lib
 class Fsm_calRefineThreadSignals(QObject):
     to_main_thread = pyqtSignal(object)
 
-class Fsm_calRefineThread(QRunnable):
+class CalRefineFsmProcess(QRunnable):
     def __init__(self, fsm_to_screen_sndr):
         super().__init__()
         self.cal_matrix = []
@@ -176,12 +176,12 @@ class Fsm_calRefineThread(QRunnable):
         self.fsm_parameter['auto_pump'] = True
         
         
-class Fsm_calRefineGui(FsmGui):
+class CalRefineGuiProcess(FsmGui):
     def __init__(self,cal_name, fsm_to_screen_sndr, stop_fsm_process_Event):
         self.cal_name = cal_name
         self.fsm_to_screen_sndr = fsm_to_screen_sndr
         self.stop_fsm_process_Event = stop_fsm_process_Event
-        super(Fsm_calRefineGui,self).__init__(self.fsm_to_screen_sndr, self.stop_fsm_process_Event)
+        super(CalRefineGuiProcess,self).__init__(self.fsm_to_screen_sndr, self.stop_fsm_process_Event)
         
         self.init_gui()
 
@@ -231,7 +231,7 @@ class Fsm_calRefineGui(FsmGui):
             self.log_QPlainTextEdit.appendPlainText('No calibration found. Please calibrate first.')
         
         # Initialize fsm thread        
-        self.fsm_thread = Fsm_calRefineThread(self.fsm_to_screen_sndr)
+        # self.fsm_thread = Fsm_calRefineThread(self.fsm_to_screen_sndr)
     #%% SIGNALS
         self.data_QTimer.timeout.connect(self.data_QTimer_timeout)
         self.fsm_thread.signals.to_main_thread.connect(self.receive_fsm_signal)

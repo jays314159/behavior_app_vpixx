@@ -62,7 +62,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
         this_monitor = monitors.Monitor(setting['monitor_name'], width=setting['monitor_width'], distance=setting['monitor_distance'])
         this_monitor.setSizePix(setting['monitor_size'])
         self.window = visual.Window(size=setting['monitor_size'],screen=setting['monitor_num'], allowGUI=False, color='white', monitor=this_monitor,
-                                units='deg', winType='pyglet', fullscr=True, checkTiming=False, waitBlanking=False)
+                                units='deg', winType='pyglet', fullscr=True, checkTiming=False, waitBlanking=True)
         self.window.flip()
         
         # Make targets
@@ -81,6 +81,11 @@ class CorrSacFsmProcess(multiprocessing.Process):
         # Get pointers to store data from device
         cal_data, raw_data = lib.VPixx_get_pointers_for_data()
              
+        # Init. var.
+        bitMask = 0xffffff # for VPixx digital out, in hex bit
+        DPxSetDoutValue(0, bitMask)
+        DPxUpdateRegCache()
+        
         run_exp = False
         # Process loop
         while not self.stop_fsm_process_Event.is_set():
@@ -109,8 +114,13 @@ class CorrSacFsmProcess(multiprocessing.Process):
                 eye_pos = [0,0]
                 eye_vel = [0,0]
                 eye_speed = 0.0
-                bitMask = 0xffffff # for VPixx digital out, in hex bit
-                dout_val = 0
+                
+                # Reset digital out
+                dout_ch_1 = 1 # nominal PD
+                dout_ch_2 = 0 # random signal
+                DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                DPxUpdateRegCache()
+                
                 run_exp = True        
             # Trial loop
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
@@ -128,9 +138,15 @@ class CorrSacFsmProcess(multiprocessing.Process):
                 while not self.stop_fsm_process_Event.is_set() and run_exp:
                     if self.stop_exp_Event.is_set():
                         break
+                    # Send random signal for alignment
+                    if random.random() > 0.5:
+                        dout_ch_2 = 0 
+                    else:
+                        dout_ch_2 = 0
+                    DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
                     # Get time       
                     self.t = TPxBestPolyGetEyePosition(cal_data, raw_data) # this calls 'DPxUpdateRegCache' as well
-                    
+
                     # Get eye status (blinking)
                     eye_status = DPxGetReg16(0x59A)
                     left_eye_blink = bool(eye_status & (1 << 1)) # right blink, left blink
@@ -150,13 +166,8 @@ class CorrSacFsmProcess(multiprocessing.Process):
                     else:
                         self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
                         self.eye_y = 9999 
-                    # Send random signal for alignment
-                    if random.random() > 0.5:
-                        dout_val = 4 # convert to base-2 to determine ch
-                    else:
-                        dout_val = 0
                     
-                    if state == 'INIT':
+                    if state == 'INIT':                     
                         print('state = INIT')               
                         # Set trial parameters
                         tgt_idx = random.randint(0,num_tgt_pos-1) # Randomly pick target
@@ -189,9 +200,14 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         state_start_time = self.t
                         state_inter_time = self.t
                         self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                        dout_ch_1 = 0
+                        self.pd_tgt.draw()
+                        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                        DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                        self.window.flip() 
                         state = 'STR_TARGET_PURSUIT'
-                        dout_val += 1 # digital ch0 for nominal PD signal
                         print('state = STR_TARGET_PURSUIT')
+                    
                     if state == 'STR_TARGET_PURSUIT':
                         pursuit_x = pursuit_v_x*(self.t-state_start_time) + pursuit_start_x
                         pursuit_y = pursuit_v_y*(self.t-state_start_time) + pursuit_start_y  
@@ -205,10 +221,12 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_present'].append(self.t)
-                            state = 'STR_TARGET_PRESENT'   
+                            state = 'STR_TARGET_PRESENT'  
+                            dout_ch_1 = 1
                             self.tgt.draw()
-                            self.window.flip()
-                            dout_val -= 1
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip()                     
                             print('state = STR_TARGET_PRESENT')
                         if self.t - self.pull_data_t > 5:
                             self.pull_data_t = self.t
@@ -216,6 +234,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             # Send trial data to GUI
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             self.init_trial_data()
+                    
                     if state == 'STR_TARGET_PRESENT':
                         if not left_eye_blink:
                             self.tgt_x = self.start_x
@@ -232,8 +251,13 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                            dout_ch_1 = 0
+                            self.pd_tgt.draw()
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
-                            dout_val += 1
+
                     if state == 'STR_TARGET_FIXATION':
                         eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
                         # If eye not available or fixating at the start target, reset the timer
@@ -243,28 +267,36 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_cue_tgt_present'].append(self.t)
-                            print('state = CUE_TARGET_PRESENT')
+                            self.tgt_x = self.cue_x
+                            self.tgt_y = self.cue_y
+                            self.tgt.pos = (self.tgt_x,self.tgt_y)                   
+                            self.tgt.draw()
+                            self.pd_tgt.draw()
+                            dout_ch_1 = 0
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip() 
+                            lib.playSound(1000,0.1) # neutral beep  
                             state = 'CUE_TARGET_PRESENT'
-                            dout_val += 1
+                            print('state = CUE_TARGET_PRESENT')
                         if (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                            dout_ch_1 = 0
+                            self.pd_tgt.draw()
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'  
-                            dout_val += 1
+                    
                     if state == 'CUE_TARGET_PRESENT':
-                        self.tgt_x = self.cue_x
-                        self.tgt_y = self.cue_y
-                        self.tgt.pos = (self.tgt_x,self.tgt_y)
-                        self.tgt.draw()
-                        self.pd_tgt.draw()
-                        self.window.flip()
-                        lib.playSound(1000,0.1) # neutral beep  
                         state_start_time = self.t
                         state_inter_time = self.t
                         self.trial_data['state_start_t_detect_sac_start'].append(self.t)
                         state = 'DETECT_SACCADE_START'
                         print('state = DETECT_SACCADE_START')
+                    
                     if state == 'DETECT_SACCADE_START':
                         eye_dist_from_start_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
                         if eye_speed >= fsm_parameter['sac_detect_threshold']:         
@@ -277,8 +309,11 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
+                            dout_ch_1 = 1
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip() 
                             state = 'INCORRECT_SACCADE'
-                            dout_val -= 1
                         # If time runs out before saccade detected, play punishment sound and reset the trial
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             ######
@@ -287,7 +322,13 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                            dout_ch_1 = 0
+                            self.pd_tgt.draw()
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
+                    
                     if state == 'SACCADE':
                         # Check to see if saccade is in the right direction
                         target_dir_vector = [self.cue_x-self.start_x,self.cue_y-self.start_y]
@@ -303,21 +344,25 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
+                            dout_ch_1 = 1
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip() 
                             state = 'INCORRECT_SACCADE'
-                            dout_val -= 1
                         else:
                             # Move the target to secondary pos.
                             self.tgt_x = self.end_x
                             self.tgt_y = self.end_y
                             self.tgt.pos = (self.tgt_x,self.tgt_y)
                             self.tgt.draw()
-                            self.window.flip()
+                            self.pd_tgt.draw()
+                            self.window.flip() 
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_detect_sac_end'].append(self.t)
                             state = 'DETECT_SACCADE_END'
-                            dout_val -= 1
                             print('state = DETECT_SACCADE_END')
+                    
                     if state == 'DETECT_SACCADE_END':
                         if (eye_speed < fsm_parameter['sac_on_off_threshold']) and (self.t-state_start_time > 0.005):#25):
                             # Check if saccade made to cue or end tgt.
@@ -334,14 +379,23 @@ class CorrSacFsmProcess(multiprocessing.Process):
                                 state_start_time = self.t
                                 state_inter_time = self.t
                                 self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
+                                dout_ch_1 = 1
+                                DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                                DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                                self.window.flip() 
                                 state = 'INCORRECT_SACCADE'
                           # If time runs out before saccade detected, reset the trial
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                            dout_ch_1 = 0
+                            self.pd_tgt.draw()
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
-                            dout_val += 1                        
+                    
                     if state == 'DELIVER_REWARD':
                         eye_dist_from_cue_tgt = np.sqrt((self.cue_x-self.eye_x)**2 + (self.cue_y-self.eye_y)**2)
                         eye_dist_from_end_tgt = np.sqrt((self.end_x-self.eye_x)**2 + (self.end_y-self.eye_y)**2)
@@ -358,50 +412,70 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_end_tgt_fixation'].append(self.t)
+                            self.tgt.draw()
+                            dout_ch_1 = 1
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip()
                             state = 'END_TARGET_FIXATION'  
-                            dout_val += 1    
                             print('state = END_TARGET_FIXATION')
                         # If animal makes random saccade instead of corrective one, reset trial
                         elif (eye_dist_from_cue_tgt > fsm_parameter['rew_area']/2) and (eye_dist_from_end_tgt > fsm_parameter['rew_area']/2):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                            dout_ch_1 = 0
+                            self.pd_tgt.draw()
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
-                            dout_val += 1    
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                            dout_ch_1 = 0
+                            self.pd_tgt.draw()
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
-                            dout_val += 1    
+                    
                     if state == 'END_TARGET_FIXATION':
-                        self.tgt.draw()
-                        self.pd_tgt.draw()
-                        self.window.flip()
                         eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)   
                         if ((self.t - state_inter_time) >= fsm_parameter['min_fix_time']):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_trial_success'].append(self.t)
+                            self.window.flip() # remove all targets
                             state = 'TRIAL_SUCCESS'
-                            dout_val -= 1    
                             print('state = TRIAL_SUCCESS')
                         # If time runs out before fixation finished, reset the trial
                         elif (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                            dout_ch_1 = 0
+                            self.pd_tgt.draw()
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'                     
+                    
                     if state == 'INCORRECT_SACCADE':
                         # self.fsm_to_gui_sndr.send(('pun_beep',0))
-                        self.window.flip() # remove all targets
                         if ((self.t - state_start_time) > fsm_parameter['pun_time']):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                            dout_ch_1 = 0
+                            self.pd_tgt.draw()
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
+                            self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
+                    
                     if state == 'TRIAL_SUCCESS':
-                        self.window.flip() # remove all targets
                         if (self.t-state_start_time) > fsm_parameter['ITI']:
                             # Pull data
                             self.pull_data_t = self.t
@@ -413,6 +487,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.init_trial_data()  
                             self.trial_data['cal_matrix'] = cal_parameter['cal_matrix']
                             state = 'INIT'   
+                    
                     # Append data 
                     self.trial_data['tgt_time_data'].append(self.t)
                     self.trial_data['tgt_x_data'].append(self.tgt_x)
@@ -426,16 +501,22 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         self.real_time_data_Array[2] = self.eye_y
                         self.real_time_data_Array[3] = self.tgt_x
                         self.real_time_data_Array[4] = self.tgt_y
-                    # Send digital out
-                    DPxSetDoutValue(dout_val, bitMask)
-        # Turn off VPixx schedule
-        lib.VPixx_turn_off_schedule()
-        # Close VPixx devices
-        DPxSetTPxSleep()
-        DPxSelectDevice('DATAPIXX3')
-        DPxUpdateRegCache()  
-        DPxClose()        
-        tracker.TRACKPixx3().close()  
+        
+        # Save current trial data
+        self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
+        # # Turn off VPixx schedule
+        # lib.VPixx_turn_off_schedule()
+        # # Close VPixx devices
+        # DPxSetTPxSleep()
+        # DPxSelectDevice('DATAPIXX3')
+        # DPxUpdateRegCache()  
+        # DPxClose()        
+        # tracker.TRACKPixx3().close()  
+        # Reset digital out
+        dout_ch_1 = 1 # nominal PD
+        dout_ch_2 = 0 # random signal
+        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+        DPxUpdateRegCache()
         # Signal successful exit
         self.fsm_to_gui_sndr.send(1) 
         # Reset time
