@@ -140,7 +140,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         break
                     # Send random signal for alignment
                     if random.random() > 0.5:
-                        dout_ch_2 = 0 
+                        dout_ch_2 = 1 
                     else:
                         dout_ch_2 = 0
                     DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
@@ -517,8 +517,8 @@ class CorrSacFsmProcess(multiprocessing.Process):
         dout_ch_2 = 0 # random signal
         DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
         DPxUpdateRegCache()
-        # Signal successful exit
-        self.fsm_to_gui_sndr.send(1) 
+        # # Signal successful exit
+        # self.fsm_to_gui_sndr.send(1) 
         # Reset time
         self.t = math.nan
     def pull_data(self):
