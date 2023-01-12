@@ -82,6 +82,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
         cal_data, raw_data = lib.VPixx_get_pointers_for_data()
              
         # Init. var.
+        random_signal_flip_duration = 0.015 # in sec., how often to flip random signal
         bitMask = 0xffffff # for VPixx digital out, in hex bit
         DPxSetDoutValue(0, bitMask)
         DPxUpdateRegCache()
@@ -103,8 +104,10 @@ class CorrSacFsmProcess(multiprocessing.Process):
                 target_pos_list = lib.make_corr_target(fsm_parameter)
                 num_tgt_pos = len(target_pos_list)
                 # Init. var
+                DPxUpdateRegCache()
                 self.t = DPxGetTime()
                 self.pull_data_t = self.t
+                random_signal_t = self.t
                 trial_num = 1
                 pump_to_use = 1 # which pump to use currently
                 vel_samp_num = 3
@@ -139,10 +142,12 @@ class CorrSacFsmProcess(multiprocessing.Process):
                     if self.stop_exp_Event.is_set():
                         break
                     # Send random signal for alignment
-                    if random.random() > 0.5:
-                        dout_ch_2 = 1 
-                    else:
-                        dout_ch_2 = 0
+                    if (self.t - random_signal_t) > random_signal_flip_duration:
+                        random_signal_t = self.t
+                        if random.random() > 0.5:
+                            dout_ch_2 = 1 
+                        else:
+                            dout_ch_2 = 0
                     DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
                     # Get time       
                     self.t = TPxBestPolyGetEyePosition(cal_data, raw_data) # this calls 'DPxUpdateRegCache' as well
