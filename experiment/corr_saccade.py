@@ -75,9 +75,6 @@ class CorrSacFsmProcess(multiprocessing.Process):
         DPxSelectDevice('DATAPIXX3')   
         DPxUpdateRegCache()
         
-        # Turn on VPixx schedule; this needed to collect data
-        lib.VPixx_turn_on_schedule()
-        
         # Get pointers to store data from device
         cal_data, raw_data = lib.VPixx_get_pointers_for_data()
              
@@ -91,6 +88,9 @@ class CorrSacFsmProcess(multiprocessing.Process):
         # Process loop
         while not self.stop_fsm_process_Event.is_set():
             if not self.stop_exp_Event.is_set():
+                # Turn on VPixx schedule; this needed to collect data
+                lib.VPixx_turn_on_schedule()
+                
                 # Update targets
                 self.update_target()
                 
@@ -128,18 +128,22 @@ class CorrSacFsmProcess(multiprocessing.Process):
             # Trial loop
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
                 if self.stop_exp_Event.is_set():
+                    # Turn off VPixx schedule
+                    lib.VPixx_turn_off_schedule()
                     run_exp = False
                     # Remove all targets
                     self.window.flip()
                     break
                 # Init. trial variables; reset every trial
                 self.init_trial_data()  
-                self.trial_data['cal_matrix'] = cal_parameter['cal_matrix']
+                self.trial_data['left_cal_matrix'] = cal_parameter['left_cal_matrix']
                 state = 'INIT'   
                 
                 # FSM loop
                 while not self.stop_fsm_process_Event.is_set() and run_exp:
                     if self.stop_exp_Event.is_set():
+                        # Turn off VPixx schedule
+                        lib.VPixx_turn_off_schedule()
                         break
                     # Send random signal for alignment
                     if (self.t - random_signal_t) > random_signal_flip_duration:
@@ -154,10 +158,10 @@ class CorrSacFsmProcess(multiprocessing.Process):
 
                     # Get eye status (blinking)
                     eye_status = DPxGetReg16(0x59A)
-                    left_eye_blink = bool(eye_status & (1 << 1)) # right blink, left blink
+                    left_eye_blink = bool(eye_status & (1 << 1)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
                     if not left_eye_blink:
-                        raw_data_left = [raw_data[2], raw_data[3],1] # [left x, left y, right x, right y]
-                        eye_pos = lib.raw_to_deg(raw_data_left,cal_parameter['cal_matrix'])
+                        raw_data_left = [raw_data[2], raw_data[3],1] # [(animal's) right x, right y (pink), left x, left y (cyan)]
+                        eye_pos = lib.raw_to_deg(raw_data_left,cal_parameter['left_cal_matrix'])
                         self.eye_x = eye_pos[0]
                         self.eye_y = eye_pos[1]
                         # Compute eye velocity
@@ -411,6 +415,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                                     pump_to_use = 2
                                 else:
                                     pump_to_use = 1
+                                self.fsm_to_gui_sndr.send(('log','Pump switchd to '+str(pump_to_use)))
                             self.fsm_to_gui_sndr.send(('pump_' + str(pump_to_use),0))
                                                     
                             lib.playSound(2000,0.1) # reward beep
@@ -490,7 +495,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             trial_num += 1
                             self.init_trial_data()  
-                            self.trial_data['cal_matrix'] = cal_parameter['cal_matrix']
+                            self.trial_data['left_cal_matrix'] = cal_parameter['left_cal_matrix']
                             state = 'INIT'   
                     
                     # Append data 
@@ -509,14 +514,14 @@ class CorrSacFsmProcess(multiprocessing.Process):
         
         # Save current trial data
         self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
-        # # Turn off VPixx schedule
-        # lib.VPixx_turn_off_schedule()
-        # # Close VPixx devices
-        # DPxSetTPxSleep()
-        # DPxSelectDevice('DATAPIXX3')
-        # DPxUpdateRegCache()  
-        # DPxClose()        
-        # tracker.TRACKPixx3().close()  
+        # Turn off VPixx schedule
+        lib.VPixx_turn_off_schedule()
+        # Close VPixx devices
+        DPxSetTPxSleep()
+        DPxSelectDevice('DATAPIXX3')
+        DPxUpdateRegCache()  
+        DPxClose()        
+        tracker.TRACKPixx3().close()  
         # Reset digital out
         dout_ch_1 = 1 # nominal PD
         dout_ch_2 = 0 # random signal
@@ -534,7 +539,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
         '''
         print('pull data')
         tpxData = TPxReadTPxData(0)
-        self.trial_data['vpixx_time_data'].extend(tpxData[0][0::22])
+        self.trial_data['device_time_data'].extend(tpxData[0][0::22])
         self.trial_data['eye_lx_raw_data'].extend(tpxData[0][16::22])
         self.trial_data['eye_ly_raw_data'].extend(tpxData[0][17::22])
         self.trial_data['eye_l_pupil_data'].extend(tpxData[0][3::22])
@@ -569,7 +574,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
         needs to be called at the start of every trial
         '''
         self.trial_data = {}
-        self.trial_data['cal_matrix'] = [] # may be updated during exp.
+        self.trial_data['left_cal_matrix'] = [] # may be updated during exp.
         self.trial_data['state_start_t_str_tgt_pursuit'] = []
         self.trial_data['state_start_t_str_tgt_present'] = []
         self.trial_data['state_start_t_str_tgt_fixation'] = []
@@ -601,7 +606,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
         self.trial_data['eye_ry_raw_data'] = []
         self.trial_data['eye_r_pupil_data'] = []
         self.trial_data['eye_r_blink_data'] = []
-        self.trial_data['vpixx_time_data'] = []
+        self.trial_data['device_time_data'] = []
         self.trial_data['din_data'] = []
         self.trial_data['dout_data'] = []
         
@@ -698,6 +703,9 @@ class CorrSacGui(FsmGui):
                 # Save parameters
                 self.save_QPushButton_clicked()
                 # Init. data    
+                self.exp_parameter['right_eye_tracked'] = 0
+                self.exp_parameter['left_eye_tracked'] = 1
+                self.exp_parameter['version'] = 1.0
                 self.fsm_to_plot_priority_socket.send_pyobj(('init_data',self.exp_name, self.exp_parameter))
                 # Start timer to get data from FSM
                 self.data_QTimer.start(self.data_rate)
@@ -1154,6 +1162,7 @@ class CorrSacGui(FsmGui):
         self.num_corr_sac_dir_QDoubleSpinBox.setValue(self.exp_parameter['num_corr_sac_dir'])
         self.first_corr_sac_dir_QDoubleSpinBox.setValue(self.exp_parameter['first_corr_sac_dir'])
         self.iti_QDoubleSpinBox.setValue(self.exp_parameter['ITI'])
+        self.pump_switch_QDoubleSpinBox.setValue(self.exp_parameter['pump_switch_interval'])
 
         
 class CorrSacGuiProcess(multiprocessing.Process):

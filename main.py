@@ -67,7 +67,7 @@ class MainGui(QMainWindow):
         gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
         
         real_time_data_Array = multiprocessing.Array('d', range(5))
-        exp_name = 'corrective_saccade'
+        exp_name = 'random_corrective_saccades'
         fsm_process = CorrSacFsmProcess(exp_name, CorrSacGui.set_default_exp_parameter, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array)
         gui_process = CorrSacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array)
                    
