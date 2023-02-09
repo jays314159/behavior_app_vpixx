@@ -70,7 +70,6 @@ def load_parameter(folder_name,file_name,multi_instance,default_parameter_fnc, i
         parameter_file_path - full path of parameter file
                             - e.g., 'C\\Users\\a\\app\\exp_parameter.json'
     '''
-    print(instance_name)
     parameter_file_path = os.path.join(str(Path().absolute()),folder_name,file_name)
     if os.path.exists(parameter_file_path):
         with open(parameter_file_path,'r+') as file:
@@ -80,7 +79,7 @@ def load_parameter(folder_name,file_name,multi_instance,default_parameter_fnc, i
                     parameter = all_parameter[instance_name]
                 # If specific instance of parameters not exist
                 else:
-                    parameter = default_parameter_fnc(instance_name)
+                    parameter = default_parameter_fnc()
                     all_parameter[instance_name] = parameter
                     file.seek(0)
                     json.dump(all_parameter,file,indent=4)
@@ -88,7 +87,7 @@ def load_parameter(folder_name,file_name,multi_instance,default_parameter_fnc, i
                 parameter = json.load(file)
     # If no file exists
     else:
-        parameter = default_parameter_fnc(instance_name)
+        parameter = default_parameter_fnc()
         with open(parameter_file_path,'w') as file:
             if multi_instance == True:
                 json.dump({instance_name: parameter}, file, indent=4)

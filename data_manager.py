@@ -11,6 +11,7 @@ import os
 from datetime import date, datetime
 from pathlib import Path
 import numpy as np
+from scipy.io import savemat
 
 class DataManagerSignals(QObject):
     to_main_thread = pyqtSignal(object)
@@ -77,4 +78,24 @@ class DataManager(QRunnable):
             data_file.attrs[key] = value
         data_file.close() 
         self.signals.to_main_thread.emit(('log','Saving data to "' + data_file_name+'.hdf5"'))
+        
+    def convert_data(self):
+        '''
+        convert data from HDF5 to .mat format
+        '''
+        data_file = h5py.File(self.data_file_path +'.hdf5','a',libver='latest')
+        # Init. data var. to save
+        data_dict = {}
+        # Read attributes (exp. parameters) 
+        for key,value in data_file.attrs.items():
+            data_dict[key] = value 
+        # Read data
+        for trial_key,_ in data_file.items():
+            data_dict[trial_key] = {}
+            for data_key, data_value in data_file[trial_key].items():
+                data_dict[trial_key][data_key] = data_value[:]
+        savemat(self.data_file_path + '.mat',{'data':data_dict})
+
+        
+        
         
