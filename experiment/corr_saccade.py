@@ -511,7 +511,8 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         self.real_time_data_Array[2] = self.eye_y
                         self.real_time_data_Array[3] = self.tgt_x
                         self.real_time_data_Array[4] = self.tgt_y
-        
+        # Close PsychoPy
+        core.quit()
         # Save current trial data
         self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
         # Turn off VPixx schedule

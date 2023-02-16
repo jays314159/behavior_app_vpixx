@@ -148,7 +148,7 @@ class FsmGui(QMainWindow):
 
     def closeEvent(self,event):
         self.stop_fsm_process_Event.set()
-        time.sleep(0.1)
+        time.sleep(0.5)
         try:
             self.pump_1.clean_exit()
             self.pump_2.clean_exit()
