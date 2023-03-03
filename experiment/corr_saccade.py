@@ -647,7 +647,7 @@ class CorrSacGui(FsmGui):
         self.update_exp_parameter()
         # Load calibration 
         self.cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,lib.set_default_cal_parameter,'calibration')
-        if not self.cal_parameter['cal_status']:
+        if not self.cal_parameter['left_cal_status']:
             self.toolbar_run_QAction.setDisabled(True)
             self.log_QPlainTextEdit.appendPlainText('No calibration found. Please calibrate first.')
         

@@ -8,31 +8,32 @@ from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxL
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
 from PyQt5.QtGui import QKeySequence
 import pyqtgraph as pg
+from psychopy import monitors, visual, core
 
 from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxSelectDevice,DPxUpdateRegCache, DPxSetTPxAwake,\
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetTPxSleep,DPxClose
 
 import multiprocessing, sys, os, json, random, time, copy, ctypes, math, zmq
-sys.path.append('../app')
 from pathlib import Path
 import numpy as np
 
+sys.path.append('../app')
+from calibration.calibration import CalFsmProcess
 from fsm_gui import FsmGui
 from target import TargetWidget
 import app_lib as lib
 
-class Fsm_calRefineThreadSignals(QObject):
-    to_main_thread = pyqtSignal(object)
-
-class CalRefineFsmProcess(QRunnable):
-    def __init__(self, fsm_to_screen_sndr):
+class CalRefineFsmProcess(multiprocessing.Process):
+    def __init__(self,  exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
         super().__init__()
+        self.exp_name = exp_name
         self.cal_matrix = []
-        self.init_fsm_parameter()
-        self.fsm_to_screen_sndr = fsm_to_screen_sndr
-        self.signals = Fsm_calRefineThreadSignals()
-        self.setAutoDelete(False) # if True, the object of this thread worker is deleted after finishing thread
+        self.fsm_to_gui_sndr = fsm_to_gui_sndr
+        self.gui_to_fsm_rcvr = gui_to_fsm_rcvr
+        self.stop_exp_Event = stop_exp_Event
+        self.stop_fsm_process_Event = stop_fsm_process_Event
+        self.real_time_data_Array = real_time_data_Array
     
         # Init var.
         self.eye_x = 0
@@ -40,11 +41,26 @@ class CalRefineFsmProcess(QRunnable):
         self.tgt_x = 0
         self.tgt_y = 0
         self.t = math.nan
+        self.real_time_data_Array[1] = self.t
         self.cal_eye_pos = [] # list of eye positions to be used for calibration
                               # that correspond to target positions
         
     @pyqtSlot()
     def run(self):           
+        # Set up exp. screen
+        file_path = os.path.join(str(Path().absolute()), 'monitor_setting.json')
+        with open(file_path,'r') as file:
+            setting = json.load(file)
+        refresh_rate = setting['monitor_refresh_rate']
+        this_monitor = monitors.Monitor(setting['monitor_name'], width=setting['monitor_width'], distance=setting['monitor_distance'])
+        this_monitor.setSizePix(setting['monitor_size'])
+        self.window = visual.Window(size=setting['monitor_size'],screen=setting['monitor_num'], allowGUI=False, color='white', monitor=this_monitor,
+                                units='deg', winType='pyglet', fullscr=True, checkTiming=False, waitBlanking=False)
+        self.window.flip()
+        
+        # Make targets
+        self.update_target()
+        
         # Check if VPixx available; if so, open
         DPxOpen()
         tracker.TRACKPixx3().open() # this throws error if not device not open           
@@ -56,101 +72,131 @@ class CalRefineFsmProcess(QRunnable):
         # Get pointers to store data from device
         cal_data, raw_data = lib.VPixx_get_pointers_for_data()
         
-        num_tgt = np.array(self.fsm_parameter['tgt_pos']).shape[0]
-        for counter_tgt in range(num_tgt):
-            state = 'INIT'
-            while self.fsm_parameter['run']:
-                DPxUpdateRegCache() # need to call each loop to update buffer from device
-                # Get time       
-                self.t = DPxGetTime()
-                # Get eye status (blinking)
-                eye_status = DPxGetReg16(0x59A)
-                left_eye_blink = bool(eye_status & (1 << 1)) # right blink, left blink
-                if not left_eye_blink:
-                    TPxBestPolyGetEyePosition(cal_data, raw_data)
-                    raw_data_left = [raw_data[2], raw_data[3],1] # [left x, left y, right x, right y]
-                    eye_pos = lib.raw_to_deg(raw_data_left,self.cal_matrix)
-                    self.eye_x = eye_pos[0]
-                    self.eye_y = eye_pos[1]
-                else:
-                    self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
-                    self.eye_y = 9999 
-                # FSM
-                if state == 'INIT':
-                    tgt_pos = self.fsm_parameter['tgt_pos'][counter_tgt]      
-                    state = 'CUE_TARGET_PRESENT'
-                if state == 'CUE_TARGET_PRESENT':
-                    lib.playSound(1000,0.1) # neutral beep
-                    self.fsm_to_screen_sndr.send(('tgt','draw',tgt_pos))
-                    self.tgt_x = tgt_pos[0]
-                    self.tgt_y = tgt_pos[1]
-                    state_start_time = self.t
-                    state_inter_time = state_start_time
-                    state = 'DETECT_SACCADE_END'
-                if state == 'DETECT_SACCADE_END':
-                    # If in manual mode, erase target after some time
-                    if ((self.fsm_parameter['mode'] == 'Manual') and ((self.t-state_start_time) > self.fsm_parameter['tgt_dur'])):
-                            self.fsm_to_screen_sndr.send(('all','rm'))
+        run_exp = False
+        
+        # Process loop
+        while not self.stop_fsm_process_Event.is_set():
+            if not self.stop_exp_Event.is_set():
+                # Update targets
+                self.update_target()
+                # Load exp parameter
+                fsm_parameter, parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,self.init_fsm_parameter,self.exp_name)
+                run_exp = True  
+                self.cal_matrix = fsm_parameter['left_cal_matrix']
+            # Trial loop
+            while not self.stop_fsm_process_Event.is_set() and run_exp: 
+                if self.stop_exp_Event.is_set():
+                    run_exp = False
+                    # Remove all targets
+                    self.window.flip()
+                    break
+                num_tgt = np.array(self.fsm_parameter['tgt_pos']).shape[0]
+                for counter_tgt in range(num_tgt):
+                    state = 'INIT'
+                    # FSM loop
+                    while not self.stop_fsm_process_Event.is_set() and run_exp:
+                        if self.stop_exp_Event.is_set():
                             break
-                    # Check for eye distance to target
-                    if not left_eye_blink:
-                        eye_dist_from_tgt = np.sqrt((tgt_pos[0]-eye_pos[0])**2 + (tgt_pos[1]-eye_pos[1])**2)
-                                        
-                        # Conditional statements below only apply to 'Auto' and 'Test' mode
-                        # If not fixating at the target, reset the fixation duration timer                   
-                        if eye_dist_from_tgt > self.fsm_parameter['rew_area']/2 or left_eye_blink:
-                            state_inter_time = self.t 
-                        # Min. fixation time req.    
-                        if ((self.fsm_parameter['mode'] == 'Auto') or (self.fsm_parameter['mode'] == 'Test'))\
-                            and ((self.t-state_inter_time) >= 0.1): 
-                            # Erase target
-                            self.fsm_to_screen_sndr.send(('all','rm'))
-                            state = 'DELIVER_REWARD'
-                if state == 'DELIVER_REWARD':
-                    lib.playSound(2000,0.1) # reward beep
-                    if self.fsm_parameter['auto_pump']:
-                        self.signals.to_main_thread.emit(('pump',0))
-                    if self.fsm_parameter['mode'] == 'Auto':
-                        # Save data for bias computation
-                        self.cal_eye_pos.append([self.eye_x,self.eye_y])
-                    state_start_time = self.t
-                    state = 'ITI'
-                if state == 'ITI':
-                    if (self.t-state_start_time) > 0.2:
-                        break # move onto next target
-        
-        # If auto mode, compute bias. Use average bias for all targets 
-        # Skip if user stopped.
-        if self.fsm_parameter['run']: 
-            if self.fsm_parameter['mode'] == 'Auto':       
-                if self.fsm_parameter['auto_mode'] == 'Full':
-                    # Concatenate 1s to target and eye arrays
-                    tgt_pos = np.array(self.fsm_parameter['tgt_pos'])
-                    eye_pos = np.array(self.cal_eye_pos)
-                    tgt_pos_mat = np.hstack([tgt_pos,np.ones((tgt_pos.shape[0],1))])
-                    eye_pos_mat = np.hstack([eye_pos,np.ones((eye_pos.shape[0],1))])
-                    # Compute new calibration matrix that goes from the already calibrated eye data to target data
-                    new_cal_matrix = np.linalg.inv(eye_pos_mat.T @ eye_pos_mat) @ eye_pos_mat.T @ tgt_pos_mat
-                    updated_cal_matrix = np.array(self.cal_matrix) @ new_cal_matrix
-                    eye_pos_pred = eye_pos_mat @ new_cal_matrix
-                    eye_pos_pred = eye_pos_pred[:,[0,1]]
-                    RMSE = np.sqrt(np.sum(np.square(tgt_pos-eye_pos_pred))/num_tgt)
-                    new_cal_matrix = new_cal_matrix.tolist()
-                    self.signals.to_main_thread.emit(('auto_mode_result',self.fsm_parameter['auto_mode'], [new_cal_matrix,RMSE]))
-                elif self.fsm_parameter['auto_mode'] == 'Bias':
-                    bias = np.empty((num_tgt,2))
-                    for counter_tgt in range(num_tgt):
-                        tgt_pos = np.array(self.fsm_parameter['tgt_pos'][counter_tgt])     
-                        eye_pos = np.array(self.cal_eye_pos[counter_tgt])
-                        print(tgt_pos)
-                        print(eye_pos)
-                        bias[counter_tgt] = tgt_pos - eye_pos
-                    mean_bias = np.mean(bias, axis=0)
-                    self.signals.to_main_thread.emit(('auto_mode_result',self.fsm_parameter['auto_mode'], [mean_bias]))
-                    print(mean_bias)
-        # Remove all targets
-        self.fsm_to_screen_sndr.send(('all','rm'))
-        
+                        # Get time       
+                        self.t = TPxBestPolyGetEyePosition(cal_data, raw_data) # this calls 'DPxUpdateRegCache' as well
+                        # Get eye status (blinking)
+                        eye_status = DPxGetReg16(0x59A)
+                        left_eye_blink = bool(eye_status & (1 << 1)) # right blink, left blink
+                        if not left_eye_blink:
+                            TPxBestPolyGetEyePosition(cal_data, raw_data)
+                            raw_data_left = [raw_data[2], raw_data[3],1] # [left x, left y, right x, right y]
+                            eye_pos = lib.raw_to_deg(raw_data_left,self.cal_matrix)
+                            self.eye_x = eye_pos[0]
+                            self.eye_y = eye_pos[1]
+                        else:
+                            self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
+                            self.eye_y = 9999 
+                        # FSM
+                        if state == 'INIT':
+                            tgt_pos = fsm_parameter['tgt_pos'][counter_tgt]      
+                            state = 'CUE_TARGET_PRESENT'
+                        if state == 'CUE_TARGET_PRESENT':
+                            lib.playSound(1000,0.1) # neutral beep
+                            self.fsm_to_screen_sndr.send(('tgt','draw',tgt_pos))
+                            self.tgt_x = tgt_pos[0]
+                            self.tgt_y = tgt_pos[1]
+                            state_start_time = self.t
+                            state_inter_time = state_start_time
+                            state = 'DETECT_SACCADE_END'
+                        if state == 'DETECT_SACCADE_END':
+                            # If in manual mode, erase target after some time
+                            if ((fsm_parameter['mode'] == 'Manual') and ((self.t-state_start_time) > fsm_parameter['tgt_dur'])):
+                                    self.fsm_to_screen_sndr.send(('all','rm'))
+                                    break
+                            # Check for eye distance to target
+                            if not left_eye_blink:
+                                eye_dist_from_tgt = np.sqrt((tgt_pos[0]-eye_pos[0])**2 + (tgt_pos[1]-eye_pos[1])**2)
+                                                
+                                # Conditional statements below only apply to 'Auto' and 'Test' mode
+                                # If not fixating at the target, reset the fixation duration timer                   
+                                if eye_dist_from_tgt > fsm_parameter['rew_area']/2 or left_eye_blink:
+                                    state_inter_time = self.t 
+                                # Min. fixation time req.    
+                                if ((fsm_parameter['mode'] == 'Auto') or (fsm_parameter['mode'] == 'Test'))\
+                                    and ((self.t-state_inter_time) >= 0.1): 
+                                    # Erase target
+                                    self.fsm_to_screen_sndr.send(('all','rm'))
+                                    state = 'DELIVER_REWARD'
+                        if state == 'DELIVER_REWARD':
+                            lib.playSound(2000,0.1) # reward beep
+                            if fsm_parameter['auto_pump']:
+                                self.signals.to_main_thread.emit(('pump',0))
+                            if fsm_parameter['mode'] == 'Auto':
+                                # Save data for bias computation
+                                self.cal_eye_pos.append([self.eye_x,self.eye_y])
+                            state_start_time = self.t
+                            state = 'ITI'
+                        if state == 'ITI':
+                            if (self.t-state_start_time) > 0.2:
+                                break # move onto next target
+                        # Update shared real time data
+                        with self.real_time_data_Array.get_lock():
+                            self.real_time_data_Array[0] = self.t
+                            self.real_time_data_Array[1] = self.eye_x
+                            print(self.eye_x)
+                            self.real_time_data_Array[2] = self.eye_y
+                            self.real_time_data_Array[3] = self.tgt_x
+                            self.real_time_data_Array[4] = self.tgt_y
+                # If auto mode, compute bias. Use average bias for all targets 
+                # Skip if user stopped.
+                if run_exp: 
+                    if fsm_parameter['mode'] == 'Auto':       
+                        if fsm_parameter['auto_mode'] == 'Full':
+                            # Concatenate 1s to target and eye arrays
+                            tgt_pos = np.array(fsm_parameter['tgt_pos'])
+                            eye_pos = np.array(self.cal_eye_pos)
+                            tgt_pos_mat = np.hstack([tgt_pos,np.ones((tgt_pos.shape[0],1))])
+                            eye_pos_mat = np.hstack([eye_pos,np.ones((eye_pos.shape[0],1))])
+                            # Compute new calibration matrix that goes from the already calibrated eye data to target data
+                            new_cal_matrix = np.linalg.inv(eye_pos_mat.T @ eye_pos_mat) @ eye_pos_mat.T @ tgt_pos_mat
+                            updated_cal_matrix = np.array(self.cal_matrix) @ new_cal_matrix
+                            eye_pos_pred = eye_pos_mat @ new_cal_matrix
+                            eye_pos_pred = eye_pos_pred[:,[0,1]]
+                            RMSE = np.sqrt(np.sum(np.square(tgt_pos-eye_pos_pred))/num_tgt)
+                            new_cal_matrix = new_cal_matrix.tolist()
+                            self.signals.to_main_thread.emit(('auto_mode_result',fsm_parameter['auto_mode'], [new_cal_matrix,RMSE]))
+                        elif fsm_parameter['auto_mode'] == 'Bias':
+                            bias = np.empty((num_tgt,2))
+                            for counter_tgt in range(num_tgt):
+                                tgt_pos = np.array(fsm_parameter['tgt_pos'][counter_tgt])     
+                                eye_pos = np.array(self.cal_eye_pos[counter_tgt])
+                                print(tgt_pos)
+                                print(eye_pos)
+                                bias[counter_tgt] = tgt_pos - eye_pos
+                            mean_bias = np.mean(bias, axis=0)
+                            self.signals.to_main_thread.emit(('auto_mode_result',fsm_parameter['auto_mode'], [mean_bias]))
+                            print(mean_bias)
+                # Signal completion
+                self.fsm_to_gui_sndr.send(('fsm_done',0))
+                self.t = math.nan
+                self.real_time_data_Array[1] = self.t
+                run_exp = False
+                self.stop_exp_Event.set()
         # Turn off VPixx schedule
         lib.VPixx_turn_off_schedule()
         # Close VPixx devices
@@ -160,29 +206,40 @@ class CalRefineFsmProcess(QRunnable):
         DPxClose()        
         tracker.TRACKPixx3().close()  
         # Signal completion
-        self.signals.to_main_thread.emit(('fsm_done',0))
+        self.fsm_to_gui_sndr.send(('fsm_done',0))
         # Reset time
         self.t = math.nan
         # Init. var
         self.cal_eye_pos = []
     def init_fsm_parameter(self):
-        self.fsm_parameter = {}
-        self.fsm_parameter['run'] = False
-        self.fsm_parameter['mode'] = 'Auto'
-        self.fsm_parameter['auto_mode'] = 'Full'
-        self.fsm_parameter['tgt_dur'] = 1
-        self.fsm_parameter['tgt_pos'] = [[0,0]]
-        self.fsm_parameter['rew_area'] = 2
-        self.fsm_parameter['auto_pump'] = True
+        fsm_parameter = {'mode': 'Auto',
+                         'auto_mode': 'Full',
+                         'tgt_dur': 1,
+                         'tgt_pos': [0,0],
+                         'center_tgt_pos': [0,0],
+                         'dist_from_center': 3,
+                         'rew_area': 2,
+                         'tgt_auto_list': [[0,0]],
+                         'auto_pump': True
+                         }
         
+    def update_target(self):
+        tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,TargetWidget.set_default_parameter,'tgt')
+        self.tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg', 
+                      lineColor=tgt_parameter['line_color'],fillColor=tgt_parameter['fill_color'],
+                      lineWidth=tgt_parameter['line_width'])
+        self.tgt.draw() # draw once already, because the first draw may be slower - Poth, 2018   
+        self.window.clearBuffer() # clear the back buffer of previously drawn stimuli - Poth, 2018
         
-class CalRefineGuiProcess(FsmGui):
-    def __init__(self,cal_name, fsm_to_screen_sndr, stop_fsm_process_Event):
-        self.cal_name = cal_name
-        self.fsm_to_screen_sndr = fsm_to_screen_sndr
+class CalRefineGui(FsmGui):
+    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
+        self.exp_name = exp_name
+        self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
+        self.gui_to_fsm_sndr = gui_to_fsm_sndr
+        self.stop_exp_Event = stop_exp_Event
         self.stop_fsm_process_Event = stop_fsm_process_Event
-        super(CalRefineGuiProcess,self).__init__(self.fsm_to_screen_sndr, self.stop_fsm_process_Event)
-        
+        self.real_time_data_Array = real_time_data_Array
+        super(CalRefineGui,self).__init__(self.stop_fsm_process_Event)       
         self.init_gui()
 
         # Init. var
@@ -210,9 +267,9 @@ class CalRefineGuiProcess(FsmGui):
         self.ROI_y_plot_2 = np.zeros(0)
                 
         # Load parameters
-        self.refine_parameter, self.parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,lib.set_default_cal_parameter, self.cal_name)
-        self.cal_parameter, self.parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,lib.set_default_cal_parameter, 'calibration')
-        self.old_cal_matrix = self.cal_parameter['cal_matrix']
+        self.refine_parameter, self.parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,CalRefineFsmProcess.init_fsm_parameter, self.exp_name)
+        self.cal_parameter, self.parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,CalFsmProcess.init_fsm_parameter, 'calibration')
+        self.old_cal_matrix = self.cal_parameter['left_cal_matrix']
         self.new_cal_matrix = copy.deepcopy(self.old_cal_matrix)
         self.tgt_pos_x_QDoubleSpinBox.setValue(self.refine_parameter['tgt_pos'][0])
         self.tgt_pos_y_QDoubleSpinBox.setValue(self.refine_parameter['tgt_pos'][1])
@@ -226,15 +283,12 @@ class CalRefineGuiProcess(FsmGui):
         if len(self.tgt_auto_list) > 0: 
             for x,y in self.tgt_auto_list:
                 self.tgt_fsm_list_QPlainTextEdit.appendPlainText('(' + '{:.1f}'.format(x) + ',' + '{:.1f}'.format(y) + ')') # for display purpose only
-        if not self.cal_parameter['cal_status']:
+        if not self.cal_parameter['left_cal_status']:
             self.toolbar_run_QAction.setDisabled(True)
             self.log_QPlainTextEdit.appendPlainText('No calibration found. Please calibrate first.')
         
-        # Initialize fsm thread        
-        # self.fsm_thread = Fsm_calRefineThread(self.fsm_to_screen_sndr)
     #%% SIGNALS
         self.data_QTimer.timeout.connect(self.data_QTimer_timeout)
-        self.fsm_thread.signals.to_main_thread.connect(self.receive_fsm_signal)
         # Plots
         self.plot_1_ROI_signal = pg.SignalProxy(self.plot_1_PlotWidget.scene().sigMouseClicked, rateLimit=60, slot=self.plot_1_PlotWidget_mouseClicked)
         self.plot_2_ROI_signal = pg.SignalProxy(self.plot_2_PlotWidget.scene().sigMouseClicked, rateLimit=60, slot=self.plot_2_PlotWidget_mouseClicked)
@@ -267,7 +321,7 @@ class CalRefineGuiProcess(FsmGui):
         self.refine_parameter['auto_pump'] = self.auto_pump_QCheckBox.isChecked()
         with open(self.parameter_file_path,'r') as file:
             all_parameter = json.load(file)
-        all_parameter[self.cal_name] = self.refine_parameter  
+        all_parameter[self.exp_name] = self.refine_parameter  
         with open(self.parameter_file_path,'w') as file:
             json.dump(all_parameter, file, indent=4)   
         self.log_QPlainTextEdit.appendPlainText('Saved parameters')
@@ -289,15 +343,6 @@ class CalRefineGuiProcess(FsmGui):
             self.tgt_fsm_list.append((self.tgt_pos_x_QDoubleSpinBox.value(),self.tgt_pos_y_QDoubleSpinBox.value()))
             self.cal_tgt_x = self.tgt_fsm_list[0][0]
             self.cal_tgt_y = self.tgt_fsm_list[0][1]
-        # Set parameters
-        self.fsm_thread.fsm_parameter['run'] = True
-        self.fsm_thread.fsm_parameter['mode'] = self.cal_mode_QComboBox.currentText()
-        self.fsm_thread.fsm_parameter['auto_mode'] = self.cal_auto_mode_QComboBox.currentText()
-        self.fsm_thread.fsm_parameter['tgt_dur'] = self.tgt_dur_QDoubleSpinBox.value()
-        self.fsm_thread.fsm_parameter['tgt_pos'] = self.tgt_fsm_list
-        self.fsm_thread.fsm_parameter['rew_area'] = self.default_rew_area_QDoubleSpinBox.value()
-        self.fsm_thread.fsm_parameter['auto_pump'] = self.auto_pump_QCheckBox.isChecked()
-        self.fsm_thread.cal_matrix = self.new_cal_matrix
         # Reset target list (manual mode)
         if self.cal_mode_QComboBox.currentText() == 'Manual':
             self.tgt_fsm_list = []
@@ -319,8 +364,6 @@ class CalRefineGuiProcess(FsmGui):
         self.plot_1_eye_selected.setData(np.zeros(0), np.zeros(0))
         self.plot_2_eye_x_selected.setData(np.zeros(0), np.zeros(0))
         self.plot_2_eye_y_selected.setData(np.zeros(0), np.zeros(0))
-        # Start fsm thread
-        self.thread_pool.start(self.fsm_thread)    
         # Start timer to get data from fsm thread
         self.data_QTimer.start(self.data_rate)
         
@@ -332,7 +375,8 @@ class CalRefineGuiProcess(FsmGui):
         self.sidepanel_parameter_QWidget.setEnabled(True)
         self.tgt.setEnabled(True)
         self.pd_tgt.setEnabled(True)
-        self.fsm_thread.fsm_parameter['run'] = False
+        # Ask FSM to stop
+        self.stop_exp_Event.set()
         # Stop timer to stop getting data from fsm thread
         self.data_QTimer.stop()
         # Restore reset/save functions if new cal. available
@@ -436,19 +480,30 @@ class CalRefineGuiProcess(FsmGui):
         '''
         start getting data from fsm thread
         '''
-        if not math.isnan(self.fsm_thread.t):
-            self.eye_x_data.append(self.fsm_thread.eye_x)
-            self.eye_y_data.append(self.fsm_thread.eye_y)
-            self.tgt_x_data.append(self.fsm_thread.tgt_x)
-            self.tgt_y_data.append(self.fsm_thread.tgt_y)
-            self.t_data.append(self.fsm_thread.t)
+        with self.real_time_data_Array.get_lock():
+            t = self.real_time_data_Array[0]
+            eye_x = self.real_time_data_Array[1]
+            eye_y = self.real_time_data_Array[2]
+            tgt_x = self.real_time_data_Array[3]
+            tgt_y = self.real_time_data_Array[4]
+        if not math.isnan(t):
+            self.eye_x_data.append(eye_x)
+            self.eye_y_data.append(eye_y)
+            self.tgt_x_data.append(tgt_x)
+            self.tgt_y_data.append(tgt_y)
+            self.t_data.append(t)
             # Plot data
             self.plot_1_eye.setData(self.eye_x_data,self.eye_y_data)
-            self.plot_1_tgt.setData([self.fsm_thread.tgt_x],[self.fsm_thread.tgt_y])
-            self.plot_2_eye_x.setData(self.t_data,self.eye_x_data)
-            self.plot_2_eye_y.setData(self.t_data,self.eye_y_data)
-            self.plot_2_tgt_x.setData(self.t_data,self.tgt_x_data)
-            self.plot_2_tgt_y.setData(self.t_data,self.tgt_y_data)
+            # self.plot_1_tgt.setData([tgt_x],[tgt_y])
+            # self.plot_2_eye_x.setData(self.t_data,self.eye_x_data)
+            # self.plot_2_eye_y.setData(self.t_data,self.eye_y_data)
+            # self.plot_2_tgt_x.setData(self.t_data,self.tgt_x_data)
+            # self.plot_2_tgt_y.setData(self.t_data,self.tgt_y_data)
+        if self.fsm_to_gui_rcvr.poll():
+            msg = self.fsm_to_gui_rcvr.recv()
+            msg_title = msg[0]
+            if msg_title == 'fsm_done':
+                self.toolbar_stop_QAction_triggered()
     @pyqtSlot()
     def clear_ROI_QPushButton_clicked(self):
         self.ROI_x_plot_1 = np.zeros(0)
@@ -769,15 +824,18 @@ class CalRefineGuiProcess(FsmGui):
         self.plot_2_eye_x_selected.setData(np.zeros(0), np.zeros(0))
         self.plot_2_eye_y_selected.setData(np.zeros(0), np.zeros(0))
         
-class Fsm_calRefineProcess(multiprocessing.Process):
-    def __init__(self, cal_name, fsm_to_screen_sndr, stop_fsm_process_Event, parent=None):
-        super(Fsm_calRefineProcess,self).__init__(parent)
-        self.cal_name = cal_name
-        self.fsm_to_screen_sndr = fsm_to_screen_sndr
+class CalRefineGuiProcess(multiprocessing.Process):
+    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array,parent=None):
+        super(CalRefineGuiProcess,self).__init__(parent)
+        self.exp_name = exp_name
+        self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
+        self.gui_to_fsm_sndr = gui_to_fsm_sndr
+        self.stop_exp_Event = stop_exp_Event
+        self.real_time_data_Array = real_time_data_Array
         self.stop_fsm_process_Event = stop_fsm_process_Event
     def run(self):  
         fsm_app = QApplication(sys.argv)
-        fsm_app_gui = Fsm_calRefineGui(self.cal_name, self.fsm_to_screen_sndr, self.stop_fsm_process_Event)
+        fsm_app_gui = CalRefineGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array)
         fsm_app_gui.show()
         sys.exit(fsm_app.exec())
         

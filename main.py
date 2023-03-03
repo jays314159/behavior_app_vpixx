@@ -84,7 +84,7 @@ class MainGui(QMainWindow):
         
         real_time_data_Array = multiprocessing.Array('d', range(4))
         cal_name = 'calibration'
-        fsm_process = CalFsmProcess(cal_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array)
+        fsm_process = CalFsmProcess(cal_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array)
         gui_process = CalGuiProcess(cal_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array)
         
         fsm_process.start()
@@ -100,7 +100,7 @@ class MainGui(QMainWindow):
         
         real_time_data_Array = multiprocessing.Array('d', range(5))
         cal_name = 'refinement'
-        fsm_process = CalRefineFsmProcess(cal_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array)
+        fsm_process = CalRefineFsmProcess(cal_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array)
         gui_process = CalRefineGuiProcess(cal_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array)
         
         fsm_process.start()

@@ -123,8 +123,8 @@ def set_default_cal_parameter(cal_name):
                      'tgt_7': [-5,-5,True],
                      'tgt_8': [0,-5,True],
                      'tgt_9': [5,-5,True],
-                     'cal_matrix': [[0,0,0],[0,0,0],[0,0,0]],
-                     'cal_status': False,
+                     'left_cal_matrix': [[0,0,0],[0,0,0],[0,0,0]],
+                     'left_cal_status': False,
                      'RMSE': 0.0
                      }
     elif cal_name == 'refinement':
