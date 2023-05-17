@@ -2,7 +2,7 @@
 Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
 @author: Jay Pi <jay.s.314159@gmail.com>
 """
-from PyQt5 import QtCore
+from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QApplication, QMainWindow, QToolBar, QAction
 from psychopy import monitors, visual, core
 
@@ -114,6 +114,7 @@ class MainGui(QMainWindow):
 if __name__ == '__main__':
     if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):        
         main_app = QApplication(sys.argv)
+        main_app.setWindowIcon(QtGui.QIcon(os.path.join('.', 'icon', 'marmoset.png')))
         main_app_gui = MainGui()
         main_app_gui.show()
         sys.exit(main_app.exec())

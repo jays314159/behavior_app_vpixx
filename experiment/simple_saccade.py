@@ -2,7 +2,7 @@
 Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
 @author: Jay Pi <jay.s.314159@gmail.com>
 """
-from PyQt5 import QtCore
+from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxLayout, QDoubleSpinBox, QCheckBox, QPlainTextEdit,\
                             QDialog, QShortcut
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
@@ -1009,6 +1009,7 @@ class SimpleSacGuiProcess(multiprocessing.Process):
     def run(self):  
         app = QApplication(sys.argv)
         app_gui = SimpleSacGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array)
+        app_gui.setWindowIcon(QtGui.QIcon(os.path.join('.', 'icon', 'experiment_window.png')))
         app_gui.show()
         sys.exit(app.exec())
 
