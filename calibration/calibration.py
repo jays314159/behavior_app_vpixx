@@ -41,7 +41,7 @@ class CalFsmProcess(multiprocessing.Process):
         self.tgt_x = 0
         self.tgt_y = 0
         self.t = math.nan
-        self.real_time_data_Array[1] = self.t
+        self.real_time_data_Array[0] = self.t
         self.tgt_num = 1
         
     @pyqtSlot()
@@ -155,7 +155,7 @@ class CalFsmProcess(multiprocessing.Process):
                 # Signal completion
                 self.fsm_to_gui_sndr.send(('fsm_done',0))
                 self.t = math.nan
-                self.real_time_data_Array[1] = self.t
+                self.real_time_data_Array[0] = self.t
                 run_exp = False
                 self.stop_exp_Event.set()
         # Turn off VPixx schedule
