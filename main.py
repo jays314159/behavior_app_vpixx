@@ -170,6 +170,21 @@ class MainGui(QMainWindow):
         self.main_separator_3_QFrame.setFrameShape(QFrame.HLine)
         self.main_separator_3_QFrame.setFrameShadow(QFrame.Raised)
         
+        self.sys_password_QHBoxLayout = QHBoxLayout()
+        self.main_QVBoxLayout.addLayout(self.sys_password_QHBoxLayout)
+        self.sys_password_QLabel = QLabel('System password: ')
+        self.sys_password_QLabel.setToolTip('Needed to empty Linux log files')
+        self.sys_password_QHBoxLayout.addWidget(self.sys_password_QLabel)
+        self.sys_password_QLabel.setAlignment(Qt.AlignRight)
+        self.sys_password_QLineEdit = QLineEdit()
+        self.sys_password_QHBoxLayout.addWidget(self.sys_password_QLineEdit)
+        self.sys_password_QLineEdit.setToolTip('Needed to empty Linux log files')
+        
+        self.main_separator_4_QFrame = QFrame()
+        self.main_QVBoxLayout.addWidget(self.main_separator_4_QFrame)
+        self.main_separator_4_QFrame.setFrameShape(QFrame.HLine)
+        self.main_separator_4_QFrame.setFrameShadow(QFrame.Raised)
+        
         self.main_QVBoxLayout.addWidget(QLabel('Restart exp. window to apply the settings; they are automatically saved.'))
         
         self.log_QPlainTextEdit = QPlainTextEdit()
@@ -195,7 +210,8 @@ class MainGui(QMainWindow):
         for monkey_id in self.main_parameter['monkey']:
             self.monkey_QComboBox.addItem(monkey_id)
         self.monkey_QComboBox.setCurrentText(self.main_parameter['current_monkey'])
-            
+        self.sys_password_QLineEdit.setText(self.main_parameter['sys_password'])
+        
         self.cal_parameter,self.cal_parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.monkey_QComboBox.currentText())
         self.which_eye_QComboBox.setCurrentText(self.cal_parameter['which_eye_tracked'])
     #%% Signals
@@ -215,6 +231,14 @@ class MainGui(QMainWindow):
         self.unlock_QPushButton.clicked.connect(self.unlock_parameter)
     #%% Slots
     def simple_sac_QAction_triggered(self):
+        # Empty Linux log files; communication with tracker fills up the files, eventually crashing
+        sys_password = self.sys_password_QLineEdit.text()
+        cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
+        os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog.1'" % (sys_password))
+        if cmd_output != 0:
+            self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
+            return
+        
         self.save_parameter()
         
         stop_exp_Event = multiprocessing.Event()
@@ -233,6 +257,14 @@ class MainGui(QMainWindow):
         gui_process.start()
         
     def corr_sac_QAction_triggered(self):
+        # Empty Linux log files; communication with tracker fills up the files, eventually crashing
+        sys_password = self.sys_password_QLineEdit.text()
+        cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
+        os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog.1'" % (sys_password))
+        if cmd_output != 0:
+            self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
+            return
+        
         self.save_parameter()
         
         stop_exp_Event = multiprocessing.Event()
@@ -251,6 +283,14 @@ class MainGui(QMainWindow):
         gui_process.start()
     
     def cal_QAction_triggered(self):
+        # Empty Linux log files; communication with tracker fills up the files, eventually crashing
+        sys_password = self.sys_password_QLineEdit.text()
+        cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
+        os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog.1'" % (sys_password))
+        if cmd_output != 0:
+            self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
+            return
+        
         self.save_parameter()
         
         stop_exp_Event = multiprocessing.Event()
@@ -269,6 +309,14 @@ class MainGui(QMainWindow):
         gui_process.start()
     
     def refine_cal_QAction_triggered(self):    
+        # Empty Linux log files; communication with tracker fills up the files, eventually crashing
+        sys_password = self.sys_password_QLineEdit.text()
+        cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
+        os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog.1'" % (sys_password))
+        if cmd_output != 0:
+            self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
+            return
+        
         self.save_parameter()
         
         stop_exp_Event = multiprocessing.Event()
@@ -356,6 +404,7 @@ class MainGui(QMainWindow):
             json.dump(self.mon_parameter, file, indent=4)
         which_eye_tracked = self.which_eye_QComboBox.currentText()
         self.main_parameter['current_monkey'] = self.monkey_QComboBox.currentText()
+        self.main_parameter['sys_password'] = self.sys_password_QLineEdit.text()
         with open(self.cal_parameter_file_path,'r') as file:
             all_parameter = json.load(file)
         all_parameter[self.main_parameter['current_monkey']]['calibration']['which_eye_tracked'] = which_eye_tracked
@@ -381,6 +430,7 @@ class MainGui(QMainWindow):
         self.monkey_QComboBox.setDisabled(True)
         self.monkey_delete_QPushButton.setDisabled(True)
         self.monkey_add_QPushButton.setDisabled(True)
+        self.sys_password_QLineEdit.setDisabled(True)
         
     def unlock_parameter(self):
         self.lock_QPushButton.setEnabled(True)
@@ -395,6 +445,7 @@ class MainGui(QMainWindow):
         self.monkey_QComboBox.setEnabled(True)
         self.monkey_delete_QPushButton.setEnabled(True)
         self.monkey_add_QPushButton.setEnabled(True)
+        self.sys_password_QLineEdit.setEnabled(True)
         
     def set_default_mon_parameter(self):
         parameter = {
@@ -411,7 +462,8 @@ class MainGui(QMainWindow):
     def set_default_parameter(self):
         parameter = {
                      'monkey': ['0000'],
-                     'current_monkey': '0000'
+                     'current_monkey': '0000',
+                     'sys_password': '123456'
                      }
         return parameter
     

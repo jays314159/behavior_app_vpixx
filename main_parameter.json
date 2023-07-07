@@ -2,5 +2,6 @@
     "monkey": [
         "0000"
     ],
-    "current_monkey": "0000"
+    "current_monkey": "0000",
+    "sys_password": "Neuro123654789"
 }
