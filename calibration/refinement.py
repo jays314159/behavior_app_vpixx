@@ -28,7 +28,6 @@ class CalRefineFsmProcess(multiprocessing.Process):
     def __init__(self,  exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, main_parameter, mon_parameter):
         super().__init__()
         self.exp_name = exp_name
-        self.cal_matrix = []
         self.fsm_to_gui_sndr = fsm_to_gui_sndr
         self.gui_to_fsm_rcvr = gui_to_fsm_rcvr
         self.stop_exp_Event = stop_exp_Event
@@ -90,7 +89,8 @@ class CalRefineFsmProcess(multiprocessing.Process):
                 eye_speed = 0.0
                 right_eye_blink = True
                 left_eye_blink = True
-               
+                self.cal_eye_pos = []
+                
                 run_exp = True  
             # Trial loop
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
@@ -226,35 +226,30 @@ class CalRefineFsmProcess(multiprocessing.Process):
                 # Skip if user stopped.
                 if run_exp: 
                     if fsm_parameter['mode'] == 'Auto':       
-                        if fsm_parameter['auto_mode'] == 'Full':
-                            for counter_tgt in range(num_tgt):
-                                tgt_pos = fsm_parameter['tgt_auto_list'][counter_tgt]   
-                            # Concatenate 1s to target and eye arrays
-                            tgt_pos = np.array(fsm_parameter['tgt_pos'])
-                            eye_pos = np.array(self.cal_eye_pos)
-                            print(tgt_pos)
-                            print(np.ones((tgt_pos.shape[0],1)))
-                            tgt_pos_mat = np.hstack([tgt_pos,np.ones((tgt_pos.shape[0],1))])
-                            eye_pos_mat = np.hstack([eye_pos,np.ones((eye_pos.shape[0],1))])
+                        tgt_pos = np.array(fsm_parameter['tgt_auto_list'])
+                        eye_pos = np.array(self.cal_eye_pos)
+                        # Concatenate 1s to target and eye arrays
+                        tgt_pos_mat = np.hstack([tgt_pos,np.ones((tgt_pos.shape[0],1))])
+                        eye_pos_mat = np.hstack([eye_pos,np.ones((eye_pos.shape[0],1))])
+                        if cal_parameter['which_eye_tracked'] == 'Right':
+                            old_cal_matrix = cal_parameter['right_cal_matrix']
+                        else:
+                            old_cal_matrix = cal_parameter['left_cal_matrix']
+                        if fsm_parameter['auto_mode'] == 'Full':                            
                             # Compute new calibration matrix that goes from the already calibrated eye data to target data
                             new_cal_matrix = np.linalg.inv(eye_pos_mat.T @ eye_pos_mat) @ eye_pos_mat.T @ tgt_pos_mat
-                            updated_cal_matrix = np.array(self.cal_matrix) @ new_cal_matrix
+                            updated_cal_matrix = old_cal_matrix @ new_cal_matrix
                             eye_pos_pred = eye_pos_mat @ new_cal_matrix
                             eye_pos_pred = eye_pos_pred[:,[0,1]]
                             RMSE = np.sqrt(np.sum(np.square(tgt_pos-eye_pos_pred))/num_tgt)
                             new_cal_matrix = new_cal_matrix.tolist()
                             self.fsm_to_gui_sndr.send(('auto_mode_result',fsm_parameter['auto_mode'], [new_cal_matrix,RMSE]))
                         elif fsm_parameter['auto_mode'] == 'Bias':
-                            bias = np.empty((num_tgt,2))
-                            for counter_tgt in range(num_tgt):
-                                tgt_pos = np.array(fsm_parameter['tgt_pos'][counter_tgt])     
-                                eye_pos = np.array(self.cal_eye_pos[counter_tgt])
-                                # print(tgt_pos)
-                                # print(eye_pos)
-                                bias[counter_tgt] = tgt_pos - eye_pos
+                            bias = tgt_pos - eye_pos
                             mean_bias = np.mean(bias, axis=0)
-                            self.fsm_to_gui_sndr.send(('auto_mode_result',fsm_parameter['auto_mode'], [mean_bias]))
-                            # print(mean_bias)
+                            eye_pos_pred = eye_pos + mean_bias
+                            RMSE = np.sqrt(np.sum(np.square(tgt_pos-eye_pos_pred))/num_tgt)
+                            self.fsm_to_gui_sndr.send(('auto_mode_result',fsm_parameter['auto_mode'], [mean_bias, RMSE]))
                 # Signal completion, only if not already manually stopped
                 if run_exp: 
                     self.fsm_to_gui_sndr.send(('fsm_done',0))
@@ -597,13 +592,14 @@ class CalRefineGui(FsmGui):
             if msg_title == 'pump_1':
                 self.sidepanel_pump_1_clicked()  
             if msg_title == 'auto_mode_result':
+                which_eye_tracked = self.cal_parameter['which_eye_tracked'].lower()
                 if msg[1] == 'Full':
                     self.reset_cal_QPushButton.setEnabled(True)
                     self.save_cal_QPushButton.setEnabled(True)
                     self.new_cal = True
                     self.new_cal_matrix = msg[2][0]
                     self.new_RMSE = msg[2][1]
-                    self.log_QPlainTextEdit.appendPlainText('Old RMSE: ' + '{:.2f}'.format(self.cal_parameter['RMSE']) + ' New RMSE: '+ '{:.2f}'.format(self.new_RMSE)) 
+                    self.log_QPlainTextEdit.appendPlainText('Old RMSE: ' + '{:.2f}'.format(self.cal_parameter[which_eye_tracked + '_RMSE']) + ' New RMSE: '+ '{:.2f}'.format(self.new_RMSE)) 
                 elif msg[1] == 'Bias':
                     self.reset_cal_QPushButton.setEnabled(True)
                     self.save_cal_QPushButton.setEnabled(True)
@@ -612,7 +608,9 @@ class CalRefineGui(FsmGui):
                     bias = msg[2][0] 
                     self.new_cal_matrix[2][0] = self.new_cal_matrix[2][0] + bias[0]
                     self.new_cal_matrix[2][1] = self.new_cal_matrix[2][1] + bias[1]
+                    self.new_RMSE = msg[2][1]
                     self.log_QPlainTextEdit.appendPlainText('Auto bias change: '+'({:.2f}'.format(bias[0]) + ',' + '{:.2f}'.format(bias[1]) + ')')
+                    self.log_QPlainTextEdit.appendPlainText('Old RMSE: ' + '{:.2f}'.format(self.cal_parameter[which_eye_tracked + '_RMSE']) + ' New RMSE: '+ '{:.2f}'.format(self.new_RMSE)) 
     @pyqtSlot()
     def clear_ROI_QPushButton_clicked(self):
         self.ROI_x_plot_1 = np.zeros(0)
