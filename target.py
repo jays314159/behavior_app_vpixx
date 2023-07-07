@@ -14,7 +14,7 @@ class TargetWidget(QWidget,QObject):
         self.init_gui()
         
         # Load parameter or set default values
-        self.parameter, self.parameter_file_path = lib.load_parameter('','tgt_parameter.json',True,self.set_default_parameter,self.tgt_name)
+        self.parameter, self.parameter_file_path = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,self.tgt_name)
         self.init_signals()
         self.update_parameter()
         self.save_QPushButton.setStyleSheet('background-color: #39E547')
@@ -161,10 +161,6 @@ class TargetWidget(QWidget,QObject):
             json.dump(all_parameter, file, indent=4)
         self.save_QPushButton.setStyleSheet('background-color: #39E547')
     #%% FUNCTIONS
-    def set_default_parameter(self):
-        self.parameter = {'size':0.5,'line_width':1.5,'fill_color':'black','line_color':'blue','pos':[0,0]}
-        return self.parameter
-
     def update_parameter(self):
         '''
         use saved parameters to set GUI values

@@ -32,27 +32,8 @@ def playSound(freq, duration):
     simpleaudio.play_buffer(audio, 1, 2, fs)
     
     return 0
-def set_default_exp_parameter(exp_name):
-    if exp_name == 'simple_saccade':
-        exp_parameter = {'horz_offset':0.0,
-                         'vert_offset':0.0,
-                         'max_allow_time':0.7,
-                         'min_fix_time':0.1,
-                         'max_wait_for_fixation':1.5,
-                         'pun_time':0.1,
-                         'time_to_reward':0.1,
-                         'sac_detect_threshold':150.0,
-                         'sac_on_off_threshold':75.0,
-                         'rew_area':3.0,
-                         'pursuit_amp':0.1,
-                         'pursuit_dur':0.1,
-                         'prim_sac_amp':4.0,
-                         'num_prim_sac_dir':8,
-                         'first_dir': 0,
-                         'ITI':0.1,
-                         'pump_switch_interval':50}
-    return exp_parameter
-def load_parameter(folder_name,file_name,multi_instance,default_parameter_fnc, instance_name=None):
+
+def load_parameter(folder_name,file_name,multi_instance,multi_monkey,default_parameter_fnc, instance_name=None,monkey_name=None):
     '''
     Arguments:
         folder_name - name of the folder containing parameter file (str)
@@ -60,86 +41,107 @@ def load_parameter(folder_name,file_name,multi_instance,default_parameter_fnc, i
         file_name - name of the file containing parameter (str)
         multi_instance - specifies if there are different instances of parameters
                          in a single file (boolean)
+        multi_monkey - specifies if there are different parameters for different monkey (boolean) 
         default_parameter_fnc - function/method that returns default parameters 
                                 if no saved parameters found                 
         instance_name - specifies instance name if 'multi_instance' is true (optional, str)
-        
+        monkey_name - specifies monkey name if 'multi_monkey' is true (optional, str)
     Returns:
         parameter - dictionary of loaded parameters or default parameters in case
                     no saved parameters found
         parameter_file_path - full path of parameter file
                             - e.g., 'C\\Users\\a\\app\\exp_parameter.json'
     '''
-    print(instance_name)
     parameter_file_path = os.path.join(str(Path().absolute()),folder_name,file_name)
     if os.path.exists(parameter_file_path):
         with open(parameter_file_path,'r+') as file:
-            if multi_instance == True:
+            if multi_monkey == True:
                 all_parameter = json.load(file)
-                if instance_name in all_parameter:
-                    parameter = all_parameter[instance_name]
-                # If specific instance of parameters not exist
+                if multi_instance == True:
+                    if monkey_name in all_parameter and instance_name in all_parameter[monkey_name]:
+                        parameter = all_parameter[monkey_name][instance_name]
+                    else:
+                        parameter = default_parameter_fnc()
+                        if monkey_name not in all_parameter: # if specific monkey not found
+                            all_parameter[monkey_name] = {}
+                        all_parameter[monkey_name][instance_name] = parameter
+                        file.seek(0)
+                        json.dump(all_parameter,file,indent=4)
+                    # If specific instance of parameters not exist
                 else:
-                    parameter = default_parameter_fnc(instance_name)
-                    all_parameter[instance_name] = parameter
-                    file.seek(0)
-                    json.dump(all_parameter,file,indent=4)
+                    if monkey_name in all_parameter:
+                        parameter = all_parameter[monkey_name]
+                    else:
+                        parameter = default_parameter_fnc(instance_name)
+                        all_parameter[monkey_name] = parameter
+                        file.seek(0)
+                        json.dump(all_parameter,file,indent=4)
             else:
-                parameter = json.load(file)
+                if multi_instance == True:
+                    all_parameter = json.load(file)
+                    if instance_name in all_parameter:
+                        parameter = all_parameter[instance_name]
+                    else: # if specific instance not found
+                        parameter = default_parameter_fnc()
+                        all_parameter[instance_name] = parameter
+                        file.seek(0)
+                        json.dump(all_parameter,file,indent=4)
+                else:
+                    parameter = json.load(file)
     # If no file exists
     else:
-        parameter = default_parameter_fnc(instance_name)
+        parameter = default_parameter_fnc()
         with open(parameter_file_path,'w') as file:
-            if multi_instance == True:
-                json.dump({instance_name: parameter}, file, indent=4)
+            if multi_monkey == True:
+                if multi_instance == True:
+                    json.dump({monkey_name: {instance_name: parameter}}, file, indent=4)
+                else:
+                    json.dump({monkey_name: parameter}, file, indent=4)
             else:
-                json.dump(parameter, file, indent=4)
-                    
+                if multi_instance == True:
+                    json.dump({instance_name: parameter}, file, indent=4)
+                else:
+                    json.dump(parameter, file, indent=4)
     return parameter, parameter_file_path    
 
+def set_default_cal_parameter():
+    parameter = {
+                 'start_x': 0,
+                 'start_y': 0,
+                 'pursuit_amp': 0.7,
+                 'pursuit_dur': 0.7,
+                 'is_pursuit_tgt': True,
+                 'cal_dur': 1,
+                 'ITI': 1,
+                 'tgt_1': [-5,5,True],
+                 'tgt_2': [0,5,True],
+                 'tgt_3': [5,5,True],
+                 'tgt_4': [-5,0,True],
+                 'tgt_5': [0,0,True],
+                 'tgt_6': [5,0,True],
+                 'tgt_7': [-5,-5,True],
+                 'tgt_8': [0,-5,True],
+                 'tgt_9': [5,-5,True],
+                 'left_cal_matrix': [[0,0,0],[0,0,0],[0,0,0]],
+                 'left_cal_status': False,
+                 'right_cal_matrix': [[0,0,0],[0,0,0],[0,0,0]],
+                 'right_cal_status': False,
+                 'left_RMSE': 0.0,
+                 'right_RMSE': 0.0,
+                 'which_eye_tracked': 'Left'
+                 }
 
-
-def set_default_cal_parameter(cal_name):
-    '''
-    # Arguments:
-    #     parameter - empty or partially filled dictionary of default calibration parameters
-    Returns:
-        parameter - dictionary of default calibration parameters 
-    '''
-    if cal_name == 'calibration':
-        parameter = {'start_x': 0,
-                     'start_y': 0,
-                     'pursuit_amp': 0.7,
-                     'pursuit_dur': 0.7,
-                     'is_pursuit_tgt': True,
-                     'cal_dur': 1,
-                     'ITI': 1,
-                     'tgt_1': [-5,5,True],
-                     'tgt_2': [0,5,True],
-                     'tgt_3': [5,5,True],
-                     'tgt_4': [-5,0,True],
-                     'tgt_5': [0,0,True],
-                     'tgt_6': [5,0,True],
-                     'tgt_7': [-5,-5,True],
-                     'tgt_8': [0,-5,True],
-                     'tgt_9': [5,-5,True],
-                     'left_cal_matrix': [[0,0,0],[0,0,0],[0,0,0]],
-                     'left_cal_status': False,
-                     'RMSE': 0.0
-                     }
-    elif cal_name == 'refinement':
-        parameter = {'mode': 'Auto',
-                     'tgt_pos': [0,0],
-                     'tgt_dur': 1,
-                     'center_tgt_pos': [0,0],
-                     'dist_from_center': 4.0,
-                     'tgt_manual_list': [0,0],
-                     'tgt_auto_list': [[0,0]],
-                     'rew_area': 4,
-                     'auto_pump': True
-                    }
     return parameter
     
+def set_default_tgt_parameter():
+    parameter = {
+                'size': 0.5,
+                'line_width': 1.5,
+                'fill_color':'black',
+                'line_color':'blue',
+                'pos':[0,0]
+                }
+    return parameter
 def inpolygon(xq, yq, xv, yv):
     """
     checks which points are inside of the specified polygon

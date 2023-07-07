@@ -56,7 +56,7 @@ class PumpWidget(QWidget):
         
         self.init_gui()
         # Load parameter or set default values
-        self.parameter, self.parameter_file_path = lib.load_parameter('','pump_parameter.json',True,self.set_default_parameter,self.pump_name)
+        self.parameter, self.parameter_file_path = lib.load_parameter('','pump_parameter.json',True,False,self.set_default_parameter,self.pump_name)
         self.update_parameter()
         
         # Init. serial comm.
@@ -281,10 +281,12 @@ class PumpWidget(QWidget):
             self.log_QPlainTextEdit.appendPlainText(error)
             
     def set_default_parameter(self):
-        self.parameter = {'port_address': 'COM1',
+        self.parameter = {
+                          'port_address': 'COM1',
                           'pump_rate': 12.0,
                           'pump_vol': 0.02,
-                          'vol_dispensed': 0.0}
+                          'vol_dispensed': 0.0
+                          }
         return self.parameter
     def update_parameter(self):
         '''

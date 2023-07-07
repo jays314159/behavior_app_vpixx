@@ -25,35 +25,31 @@ from target import TargetWidget
 import app_lib as lib
 
 class CalFsmProcess(multiprocessing.Process):
-    def __init__(self, exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
+    def __init__(self, exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, main_parameter, mon_parameter):
         super().__init__()
         self.exp_name = exp_name
-        self.cal_matrix = []
         self.fsm_to_gui_sndr = fsm_to_gui_sndr
         self.gui_to_fsm_rcvr = gui_to_fsm_rcvr
         self.stop_exp_Event = stop_exp_Event
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.real_time_data_Array = real_time_data_Array
-        
+        self.main_parameter = main_parameter
+        self.mon_parameter = mon_parameter
         # Init var.
         self.eye_raw_x = 0
         self.eye_raw_y = 0
         self.tgt_x = 0
         self.tgt_y = 0
         self.t = math.nan
-        self.real_time_data_Array[1] = self.t
         self.tgt_num = 1
-        
+        self.num_cal_tgt = 9
     @pyqtSlot()
     def run(self):    
         # Set up exp. screen
-        file_path = os.path.join(str(Path().absolute()), 'monitor_setting.json')
-        with open(file_path,'r') as file:
-            setting = json.load(file)
-        refresh_rate = setting['monitor_refresh_rate']
-        this_monitor = monitors.Monitor(setting['monitor_name'], width=setting['monitor_width'], distance=setting['monitor_distance'])
-        this_monitor.setSizePix(setting['monitor_size'])
-        self.window = visual.Window(size=setting['monitor_size'],screen=setting['monitor_num'], allowGUI=False, color='white', monitor=this_monitor,
+        this_monitor = monitors.Monitor(self.mon_parameter['monitor_name'], width=self.mon_parameter['monitor_width'], distance=self.mon_parameter['monitor_distance'])
+        this_monitor.save()
+        this_monitor.setSizePix(self.mon_parameter['monitor_size'])
+        self.window = visual.Window(size=self.mon_parameter['monitor_size'],screen=self.mon_parameter['monitor_num'], allowGUI=False, color='white', monitor=this_monitor,
                                 units='deg', winType='pyglet', fullscr=True, checkTiming=False, waitBlanking=False)
         self.window.flip()
         
@@ -66,8 +62,7 @@ class CalFsmProcess(multiprocessing.Process):
         DPxSetTPxAwake()
         DPxSelectDevice('DATAPIXX3')   
         DPxUpdateRegCache()
-        # Turn on VPixx schedule
-        lib.VPixx_turn_on_schedule()
+        
         # Get pointers to store data from device
         cal_data, raw_data = lib.VPixx_get_pointers_for_data()
         
@@ -75,10 +70,16 @@ class CalFsmProcess(multiprocessing.Process):
         # Process loop
         while not self.stop_fsm_process_Event.is_set():
             if not self.stop_exp_Event.is_set():
+                # Turn on VPixx schedule; this needed to collect data
+                lib.VPixx_turn_on_schedule()
                 # Update targets
                 self.update_target()
                 # Load exp parameter
-                fsm_parameter, parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,self.init_fsm_parameter,self.exp_name)
+                cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])                  
+                # Init. var
+                right_eye_blink = True
+                left_eye_blink = True
+               
                 run_exp = True  
             # Trial loop
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
@@ -87,36 +88,53 @@ class CalFsmProcess(multiprocessing.Process):
                     # Remove all targets
                     self.window.flip()
                     break
-                for tgt_idx in range(fsm_parameter['num_cal_tgt']):
+                for tgt_idx in range(self.num_cal_tgt):
                     tgt_num_temp = tgt_idx + 1
-                    if not fsm_parameter['tgt_'+str(tgt_num_temp)][2]:
+                    if not cal_parameter['tgt_'+str(tgt_num_temp)][2]:
                         continue
                     self.tgt_num = tgt_num_temp
                     state = 'INIT'
                     # FSM loop
                     while not self.stop_fsm_process_Event.is_set() and run_exp:
                         if self.stop_exp_Event.is_set():
+                            run_exp = False
+                            self.t = math.nan
+                            # Turn off VPixx schedule
+                            lib.VPixx_turn_off_schedule()
+                            # Remove all targets
+                            self.window.flip()
                             break
                         # Get time       
                         self.t = TPxBestPolyGetEyePosition(cal_data, raw_data) # this calls 'DPxUpdateRegCache' as well
                         # Get eye status (blinking)
                         eye_status = DPxGetReg16(0x59A)
-                        left_eye_blink = bool(eye_status & (1 << 1)) # right blink, left blink
-                        if not left_eye_blink:
-                            raw_data_left = [raw_data[2], raw_data[3],1] # [left x, left y, right x, right y]
-                            self.eye_raw_x = raw_data_left[0]
-                            self.eye_raw_y = raw_data_left[1]
+                        right_eye_blink = bool(eye_status & (1 << 0)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
+                        left_eye_blink = bool(eye_status & (1 << 1)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
+                        if cal_parameter['which_eye_tracked'] == 'Right':
+                            if not right_eye_blink:
+                                raw_data_right = [raw_data[0], raw_data[1],1] # [(animal's) right x, right y (pink), left x, left y (cyan)]
+                                self.eye_raw_x = raw_data_right[0]
+                                self.eye_raw_y = raw_data_right[1]
+                            else:
+                                self.eye_raw_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
+                                self.eye_raw_y = 9999 
                         else:
-                            self.eye_raw_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
-                            self.eye_raw_y = 9999 
+                        
+                            if not left_eye_blink:
+                                raw_data_left = [raw_data[2], raw_data[3],1] # [(animal's) right x, right y (pink), left x, left y (cyan)]
+                                self.eye_raw_x = raw_data_left[0]
+                                self.eye_raw_y = raw_data_left[1]
+                            else:
+                                self.eye_raw_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
+                                self.eye_raw_y = 9999 
                         # FSM
                         if state == 'INIT':
-                            tgt_p = np.array(fsm_parameter['tgt_'+str(self.tgt_num)][0:2])
+                            tgt_p = np.array(cal_parameter['tgt_'+str(self.tgt_num)][0:2])
                             if self.tgt_num != 5:
-                                pursuit_start_p = np.array([fsm_parameter['start_x'], fsm_parameter['start_y']])
+                                pursuit_start_p = np.array([cal_parameter['start_x'], cal_parameter['start_y']])
                                 pursuit_dir = (tgt_p - pursuit_start_p)/np.linalg.norm(tgt_p - pursuit_start_p)
-                                pursuit_p = pursuit_dir*fsm_parameter['pursuit_amp']
-                                pursuit_v = pursuit_p/fsm_parameter['pursuit_dur']
+                                pursuit_p = pursuit_dir*cal_parameter['pursuit_amp']
+                                pursuit_v = pursuit_p/cal_parameter['pursuit_dur']
                                 state_start_time = self.t
                                 state_inter_time = self.t
                                 state = 'STR_TARGET_PURSUIT'
@@ -125,39 +143,47 @@ class CalFsmProcess(multiprocessing.Process):
                                 state_inter_time = self.t                   
                                 state = 'CUE_TARGET_PRESENT'
                             lib.playSound(1000,0.1) # neutral beep
+                            
                         if state == 'STR_TARGET_PURSUIT':
-                            if fsm_parameter['is_pursuit_tgt']:
+                            if cal_parameter['is_pursuit_tgt']:
                                 self.tgt.pos = pursuit_v*(self.t-state_start_time) + pursuit_start_p
                                 self.tgt.draw()
                                 self.window.flip()
-                            if (self.t-state_start_time) > fsm_parameter['pursuit_dur'] or not fsm_parameter['is_pursuit_tgt']:
+                            if (self.t-state_start_time) > cal_parameter['pursuit_dur'] or not cal_parameter['is_pursuit_tgt']:
                                 state_start_time = self.t
                                 state_inter_time = self.t                   
                                 state = 'CUE_TARGET_PRESENT'
+                                
                         if state == 'CUE_TARGET_PRESENT':    
                             self.tgt.pos = tgt_p
                             self.tgt.draw()
                             self.window.flip()
-                            if (self.t-state_start_time) >= fsm_parameter['cal_dur']:
+                            if (self.t-state_start_time) >= cal_parameter['cal_dur']:
                                 state_start_time = self.t
                                 state_inter_time = state_start_time
                                 state = 'ITI'
+                                
                         if state == 'ITI':
                             self.window.flip()
-                            if (self.t-state_start_time) >= fsm_parameter['ITI']:
+                            if (self.t-state_start_time) >= cal_parameter['ITI']:
                                 break # move onto next target
+                                
                         # Update shared real time data
                         with self.real_time_data_Array.get_lock():
                             self.real_time_data_Array[0] = self.tgt_num
                             self.real_time_data_Array[1] = self.t
                             self.real_time_data_Array[2] = self.eye_raw_x
                             self.real_time_data_Array[3] = self.eye_raw_y
-                # Signal completion
-                self.fsm_to_gui_sndr.send(('fsm_done',0))
+                
+                # Signal completion, only if not already manually stopped
+                if run_exp: 
+                    self.fsm_to_gui_sndr.send(('fsm_done',0))
                 self.t = math.nan
                 self.real_time_data_Array[1] = self.t
                 run_exp = False
                 self.stop_exp_Event.set()
+        # Close PsychoPy
+        core.quit()
         # Turn off VPixx schedule
         lib.VPixx_turn_off_schedule()
         # Close VPixx devices
@@ -166,50 +192,26 @@ class CalFsmProcess(multiprocessing.Process):
         DPxUpdateRegCache()  
         DPxClose()        
         tracker.TRACKPixx3().close()  
-        # Signal completion
-        self.fsm_to_gui_sndr.send(('fsm_done',0))
         # Reset time
         self.t = math.nan
         
     def update_target(self):
-        tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,TargetWidget.set_default_parameter,'tgt')
+        tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'tgt')
         self.tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg', 
                       lineColor=tgt_parameter['line_color'],fillColor=tgt_parameter['fill_color'],
                       lineWidth=tgt_parameter['line_width'])
         self.tgt.draw() # draw once already, because the first draw may be slower - Poth, 2018   
         self.window.clearBuffer() # clear the back buffer of previously drawn stimuli - Poth, 2018
-        
-    def init_fsm_parameter(self):
-        fsm_parameter = {'run': False,
-                         'start_x': 0,
-                         'start_y': 0,
-                         'pursuit_amp': 0.7,
-                         'pursuit_dur': 0.7,
-                         'is_pursuit_tgt': True,
-                         'start_dur': 1,
-                         'cal_dur': 1,
-                         'ITI': 1,
-                         'num_cal_tgt': 9,
-                         'tgt_1': [-5,5,True],
-                         'tgt_2': [0,5,True],
-                         'tgt_3': [5,5,True],
-                         'tgt_4': [-5,0,True],
-                         'tgt_5': [0,0,True],
-                         'tgt_6': [5,0,True],
-                         'tgt_7': [-5,-5,True],
-                         'tgt_8': [0,-5,True],
-                         'tgt_9': [5,-5,True]
-                         }
-        return fsm_parameter
-        
+                
 class CalGui(FsmGui):
-    def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
+    def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array,main_parameter):
         self.exp_name = exp_name
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
         self.gui_to_fsm_sndr = gui_to_fsm_sndr
         self.stop_exp_Event = stop_exp_Event
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.real_time_data_Array = real_time_data_Array
+        self.main_parameter = main_parameter
         super(CalGui,self).__init__(self.stop_fsm_process_Event)
         self.init_gui()
             
@@ -265,7 +267,7 @@ class CalGui(FsmGui):
         self.ROI_y_plot_2 = np.zeros(0)
                 
         # Load parameters
-        self.cal_parameter, self.parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,lib.set_default_cal_parameter,'calibration')
+        self.cal_parameter, self.parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])
         self.tgt_widgets_dict['tgt_5_horz_QDoubleSpinBox'].setValue(self.cal_parameter['start_x'])
         self.tgt_widgets_dict['tgt_5_vert_QDoubleSpinBox'].setValue(self.cal_parameter['start_y'])
         self.pursuit_amp_QDoubleSpinBox.setValue(self.cal_parameter['pursuit_amp'])
@@ -278,7 +280,8 @@ class CalGui(FsmGui):
             self.tgt_widgets_dict['tgt_'+str(tgt_num)+'_horz_QDoubleSpinBox'].setValue(self.cal_parameter['tgt_'+str(tgt_num)][0])
             self.tgt_widgets_dict['tgt_'+str(tgt_num)+'_vert_QDoubleSpinBox'].setValue(self.cal_parameter['tgt_'+str(tgt_num)][1]),
             self.tgt_widgets_dict['tgt_'+str(tgt_num)+'_QCheckBox'].setChecked(self.cal_parameter['tgt_'+str(tgt_num)][2])
-        if self.cal_parameter['left_cal_status']:
+        which_eye_tracked = self.cal_parameter['which_eye_tracked'].lower()
+        if self.cal_parameter[which_eye_tracked + '_cal_status']:
             self.cal_status_QLabel.setText("Calibrated")
             self.cal_status_QLabel.setStyleSheet('background-color: rgb(0,255,0)')   
         else:
@@ -447,15 +450,18 @@ class CalGui(FsmGui):
             tgt_p_all = np.vstack([tgt_p_all, tgt_p])
         
         cal_matrix = np.linalg.inv(eye_p_all.T@eye_p_all)@eye_p_all.T@tgt_p_all
-        self.cal_parameter['left_cal_matrix'] = cal_matrix.tolist()
-        tgt_p_pred = eye_p_all @ self.cal_parameter['left_cal_matrix']
+        cal_matrix = cal_matrix.tolist()
+        tgt_p_pred = eye_p_all @ cal_matrix
         tgt_p_pred = tgt_p_pred[:,[0,1]]
-        self.cal_parameter['RMSE'] = np.sqrt(np.sum(np.square(tgt_p_all[:,[0,1]]-tgt_p_pred))/len(selected_tgt_idc))
-        self.log_QPlainTextEdit.appendPlainText("RMSE: " + str(self.cal_parameter['RMSE']) + " deg")
-        self.cal_parameter['left_cal_status'] = True
+        RMSE = np.sqrt(np.sum(np.square(tgt_p_all[:,[0,1]]-tgt_p_pred))/len(selected_tgt_idc))
+        self.log_QPlainTextEdit.appendPlainText("RMSE: " + str(RMSE) + " deg")
         self.cal_status_QLabel.setText("Calibrated")
         self.cal_status_QLabel.setStyleSheet('background-color: rgb(0,255,0)')   
-     
+        which_eye_tracked = self.cal_parameter['which_eye_tracked'].lower()
+        self.cal_parameter[which_eye_tracked + '_cal_matrix'] = cal_matrix
+        self.cal_parameter[which_eye_tracked + '_cal_status'] = True
+        self.cal_parameter[which_eye_tracked + '_RMSE'] = RMSE
+        
     @pyqtSlot()
     def save_QPushButton_clicked(self):
         try:
@@ -472,9 +478,9 @@ class CalGui(FsmGui):
             for tgt_idx in range(self.num_cal_tgt):
                 tgt_num = tgt_idx + 1
                 self.cal_parameter['tgt_'+str(tgt_num)] = [self.tgt_widgets_dict['tgt_'+str(tgt_num)+'_horz_QDoubleSpinBox'].value(),
-                                                                      self.tgt_widgets_dict['tgt_'+str(tgt_num)+'_vert_QDoubleSpinBox'].value(),
-                                                                      self.tgt_widgets_dict['tgt_'+str(tgt_num)+'_QCheckBox'].isChecked()]
-            all_parameter[self.exp_name] = self.cal_parameter    
+                                                           self.tgt_widgets_dict['tgt_'+str(tgt_num)+'_vert_QDoubleSpinBox'].value(),
+                                                           self.tgt_widgets_dict['tgt_'+str(tgt_num)+'_QCheckBox'].isChecked()]
+            all_parameter[self.main_parameter['current_monkey']][self.exp_name] = self.cal_parameter    
             with open(self.parameter_file_path,'w') as file:
                 json.dump(all_parameter, file, indent=4)   
             self.log_QPlainTextEdit.appendPlainText('Saved calibration along with parameters')
@@ -515,6 +521,10 @@ class CalGui(FsmGui):
             msg_title = msg[0]
             if msg_title == 'fsm_done':
                 self.toolbar_stop_QAction_triggered()
+                # print('fsm_done triggered')
+            if msg_title == 'log':
+                self.log_QPlainTextEdit.appendPlainText(msg[1])
+                
     @pyqtSlot()
     def clear_ROI_QPushButton_clicked(self):
         self.ROI_x_plot_1 = np.zeros(0)
@@ -626,7 +636,8 @@ class CalGui(FsmGui):
     # Clear calibration
     @pyqtSlot()
     def clear_cal_QPushButton_clicked(self):
-        self.cal_parameter['cal_status'] = False
+        which_eye_tracked = self.cal_parameter['which_eye_tracked'].lower()
+        self.cal_parameter[which_eye_tracked + '_cal_status'] = False
         self.cal_status_QLabel.setText("Uncalibrated")
         self.cal_status_QLabel.setStyleSheet('background-color: rgb(255,0,0)')
 
@@ -977,7 +988,7 @@ class CalGui(FsmGui):
         self.save_QPushButton.setEnabled(True)
            
 class CalGuiProcess(multiprocessing.Process):
-    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array,parent=None):
+    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array,main_parameter,parent=None):
         super(CalGuiProcess,self).__init__(parent)
         self.exp_name = exp_name
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
@@ -985,9 +996,10 @@ class CalGuiProcess(multiprocessing.Process):
         self.stop_exp_Event = stop_exp_Event
         self.real_time_data_Array = real_time_data_Array
         self.stop_fsm_process_Event = stop_fsm_process_Event
+        self.main_parameter = main_parameter
     def run(self):  
         fsm_app = QApplication(sys.argv)
-        fsm_app_gui = CalGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array)
+        fsm_app_gui = CalGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array, self.main_parameter)
         fsm_app_gui.setWindowIcon(QtGui.QIcon(os.path.join('.', 'icon', 'experiment_window.png')))
         fsm_app_gui.show()
         sys.exit(fsm_app.exec())

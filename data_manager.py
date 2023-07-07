@@ -21,7 +21,6 @@ class DataManager(QRunnable):
         self.signals = DataManagerSignals()
         
         self.data_dir = Path(__file__).parent.resolve()
-        print(self.data_dir)
         self.data_file_path = []
         self.trial_num = 0
         self.trial_data = {} # dictionary of 2000 Hz data

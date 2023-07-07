@@ -4,7 +4,7 @@ Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
 """
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxLayout, QDoubleSpinBox, QCheckBox, QPlainTextEdit,\
-                            QDialog, QShortcut
+                            QDialog, QShortcut, QWidget, QVBoxLayout
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
 from PyQt5.QtGui import QKeySequence
 import pyqtgraph as pg
@@ -17,15 +17,15 @@ from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxS
 import multiprocessing, sys, os, json, random, time, copy, ctypes, math, zmq
 from pathlib import Path
 import numpy as np
+from collections import deque
 
 sys.path.append('../app')
-from calibration.calibration import CalFsmProcess
 from fsm_gui import FsmGui
 from target import TargetWidget
 import app_lib as lib
 
 class CalRefineFsmProcess(multiprocessing.Process):
-    def __init__(self,  exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
+    def __init__(self,  exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, main_parameter, mon_parameter):
         super().__init__()
         self.exp_name = exp_name
         self.cal_matrix = []
@@ -34,27 +34,23 @@ class CalRefineFsmProcess(multiprocessing.Process):
         self.stop_exp_Event = stop_exp_Event
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.real_time_data_Array = real_time_data_Array
-    
+        self.main_parameter = main_parameter
+        self.mon_parameter = mon_parameter
         # Init var.
         self.eye_x = 0
         self.eye_y = 0
         self.tgt_x = 0
         self.tgt_y = 0
         self.t = math.nan
-        self.real_time_data_Array[1] = self.t
         self.cal_eye_pos = [] # list of eye positions to be used for calibration
                               # that correspond to target positions
         
     @pyqtSlot()
     def run(self):           
         # Set up exp. screen
-        file_path = os.path.join(str(Path().absolute()), 'monitor_setting.json')
-        with open(file_path,'r') as file:
-            setting = json.load(file)
-        refresh_rate = setting['monitor_refresh_rate']
-        this_monitor = monitors.Monitor(setting['monitor_name'], width=setting['monitor_width'], distance=setting['monitor_distance'])
-        this_monitor.setSizePix(setting['monitor_size'])
-        self.window = visual.Window(size=setting['monitor_size'],screen=setting['monitor_num'], allowGUI=False, color='white', monitor=this_monitor,
+        this_monitor = monitors.Monitor(self.mon_parameter['monitor_name'], width=self.mon_parameter['monitor_width'], distance=self.mon_parameter['monitor_distance'])
+        this_monitor.setSizePix(self.mon_parameter['monitor_size'])
+        self.window = visual.Window(size=self.mon_parameter['monitor_size'],screen=self.mon_parameter['monitor_num'], allowGUI=False, color='white', monitor=this_monitor,
                                 units='deg', winType='pyglet', fullscr=True, checkTiming=False, waitBlanking=False)
         self.window.flip()
         
@@ -67,8 +63,7 @@ class CalRefineFsmProcess(multiprocessing.Process):
         DPxSetTPxAwake()
         DPxSelectDevice('DATAPIXX3')   
         DPxUpdateRegCache()
-        # Turn on VPixx schedule
-        lib.VPixx_turn_on_schedule()
+
         # Get pointers to store data from device
         cal_data, raw_data = lib.VPixx_get_pointers_for_data()
         
@@ -76,81 +71,147 @@ class CalRefineFsmProcess(multiprocessing.Process):
         
         # Process loop
         while not self.stop_fsm_process_Event.is_set():
+            # Starting experiment
             if not self.stop_exp_Event.is_set():
+                # Turn on VPixx schedule; this needed to collect data
+                lib.VPixx_turn_on_schedule()
                 # Update targets
                 self.update_target()
                 # Load exp parameter
-                fsm_parameter, parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,self.init_fsm_parameter,self.exp_name)
+                fsm_parameter, parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,True,self.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
+                cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter, 'calibration',self.main_parameter['current_monkey'])
+                # Init. var
+                vel_samp_num = 3
+                vel_t_data = deque(maxlen=vel_samp_num)
+                eye_x_data = deque(maxlen=vel_samp_num)
+                eye_y_data = deque(maxlen=vel_samp_num)
+                eye_pos = [0,0]
+                eye_vel = [0,0]
+                eye_speed = 0.0
+                right_eye_blink = True
+                left_eye_blink = True
+               
                 run_exp = True  
-                self.cal_matrix = fsm_parameter['left_cal_matrix']
             # Trial loop
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
                 if self.stop_exp_Event.is_set():
                     run_exp = False
+                    self.t = math.nan
+                    # Turn off VPixx schedule
+                    lib.VPixx_turn_off_schedule()
                     # Remove all targets
                     self.window.flip()
                     break
-                num_tgt = np.array(self.fsm_parameter['tgt_pos']).shape[0]
+                if fsm_parameter['mode'] == 'Manual':
+                    num_tgt = 1
+                else:
+                    num_tgt = np.array(fsm_parameter['tgt_auto_list']).shape[0]
                 for counter_tgt in range(num_tgt):
                     state = 'INIT'
                     # FSM loop
                     while not self.stop_fsm_process_Event.is_set() and run_exp:
                         if self.stop_exp_Event.is_set():
+                            run_exp = False
+                            self.t = math.nan
+                            # Turn off VPixx schedule
+                            lib.VPixx_turn_off_schedule()
+                            # Remove all targets
+                            self.window.flip()
                             break
                         # Get time       
                         self.t = TPxBestPolyGetEyePosition(cal_data, raw_data) # this calls 'DPxUpdateRegCache' as well
                         # Get eye status (blinking)
                         eye_status = DPxGetReg16(0x59A)
-                        left_eye_blink = bool(eye_status & (1 << 1)) # right blink, left blink
-                        if not left_eye_blink:
-                            TPxBestPolyGetEyePosition(cal_data, raw_data)
-                            raw_data_left = [raw_data[2], raw_data[3],1] # [left x, left y, right x, right y]
-                            eye_pos = lib.raw_to_deg(raw_data_left,self.cal_matrix)
-                            self.eye_x = eye_pos[0]
-                            self.eye_y = eye_pos[1]
+                        right_eye_blink = bool(eye_status & (1 << 0)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
+                        left_eye_blink = bool(eye_status & (1 << 1)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
+                        if cal_parameter['which_eye_tracked'] == 'Right':
+                            if not right_eye_blink:
+                                eye_blink = False
+                                raw_data_right = [raw_data[0], raw_data[1],1] # [(animal's) right x, right y (pink), left x, left y (cyan)]
+                                eye_pos = lib.raw_to_deg(raw_data_right,cal_parameter['right_cal_matrix'])
+                                self.eye_x = eye_pos[0]
+                                self.eye_y = eye_pos[1]
+                                # Compute eye velocity
+                                vel_t_data.append(self.t)
+                                eye_x_data.append(self.eye_x)
+                                eye_y_data.append(self.eye_y)
+                                if len(vel_t_data)==vel_samp_num:
+                                    eye_vel[0] = np.mean(np.diff(eye_x_data)/np.diff(vel_t_data))
+                                    eye_vel[1] = np.mean(np.diff(eye_y_data)/np.diff(vel_t_data))
+                                    eye_speed = np.sqrt(eye_vel[0]**2 + eye_vel[1]**2)
+                            else:
+                                eye_blink = True
+                                self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
+                                self.eye_y = 9999 
                         else:
-                            self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
-                            self.eye_y = 9999 
+                            if not left_eye_blink:
+                                eye_blink = False
+                                raw_data_left = [raw_data[2], raw_data[3],1] # [(animal's) right x, right y (pink), left x, left y (cyan)]
+                                eye_pos = lib.raw_to_deg(raw_data_left,cal_parameter['left_cal_matrix'])
+                                self.eye_x = eye_pos[0]
+                                self.eye_y = eye_pos[1]
+                                # Compute eye velocity
+                                vel_t_data.append(self.t)
+                                eye_x_data.append(self.eye_x)
+                                eye_y_data.append(self.eye_y)
+                                if len(vel_t_data)==vel_samp_num:
+                                    eye_vel[0] = np.mean(np.diff(eye_x_data)/np.diff(vel_t_data))
+                                    eye_vel[1] = np.mean(np.diff(eye_y_data)/np.diff(vel_t_data))
+                                    eye_speed = np.sqrt(eye_vel[0]**2 + eye_vel[1]**2)
+                            else:
+                                eye_blink = True
+                                self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
+                                self.eye_y = 9999 
+                                
                         # FSM
                         if state == 'INIT':
-                            tgt_pos = fsm_parameter['tgt_pos'][counter_tgt]      
+                            if fsm_parameter['mode'] == 'Manual':
+                                tgt_pos = fsm_parameter['tgt_pos']
+                            else:
+                                tgt_pos = fsm_parameter['tgt_auto_list'][counter_tgt]    
                             state = 'CUE_TARGET_PRESENT'
+                            
                         if state == 'CUE_TARGET_PRESENT':
                             lib.playSound(1000,0.1) # neutral beep
-                            self.fsm_to_screen_sndr.send(('tgt','draw',tgt_pos))
                             self.tgt_x = tgt_pos[0]
                             self.tgt_y = tgt_pos[1]
+                            self.tgt.pos = tgt_pos
+                            self.tgt.draw()
+                            self.window.flip()
                             state_start_time = self.t
                             state_inter_time = state_start_time
                             state = 'DETECT_SACCADE_END'
+                            
                         if state == 'DETECT_SACCADE_END':
                             # If in manual mode, erase target after some time
                             if ((fsm_parameter['mode'] == 'Manual') and ((self.t-state_start_time) > fsm_parameter['tgt_dur'])):
-                                    self.fsm_to_screen_sndr.send(('all','rm'))
-                                    break
+                                self.window.flip()
+                                break
                             # Check for eye distance to target
-                            if not left_eye_blink:
+                            if not eye_blink:
                                 eye_dist_from_tgt = np.sqrt((tgt_pos[0]-eye_pos[0])**2 + (tgt_pos[1]-eye_pos[1])**2)
                                                 
                                 # Conditional statements below only apply to 'Auto' and 'Test' mode
                                 # If not fixating at the target, reset the fixation duration timer                   
-                                if eye_dist_from_tgt > fsm_parameter['rew_area']/2 or left_eye_blink:
+                                if eye_dist_from_tgt > fsm_parameter['rew_area']/2 or eye_blink:
                                     state_inter_time = self.t 
                                 # Min. fixation time req.    
                                 if ((fsm_parameter['mode'] == 'Auto') or (fsm_parameter['mode'] == 'Test'))\
                                     and ((self.t-state_inter_time) >= 0.1): 
                                     # Erase target
-                                    self.fsm_to_screen_sndr.send(('all','rm'))
+                                    self.window.flip()
                                     state = 'DELIVER_REWARD'
+                                    
                         if state == 'DELIVER_REWARD':
                             lib.playSound(2000,0.1) # reward beep
                             if fsm_parameter['auto_pump']:
-                                self.signals.to_main_thread.emit(('pump',0))
+                                self.fsm_to_gui_sndr.send(('pump_' + str(1),0))
                             if fsm_parameter['mode'] == 'Auto':
                                 # Save data for bias computation
                                 self.cal_eye_pos.append([self.eye_x,self.eye_y])
                             state_start_time = self.t
                             state = 'ITI'
+                            
                         if state == 'ITI':
                             if (self.t-state_start_time) > 0.2:
                                 break # move onto next target
@@ -158,7 +219,6 @@ class CalRefineFsmProcess(multiprocessing.Process):
                         with self.real_time_data_Array.get_lock():
                             self.real_time_data_Array[0] = self.t
                             self.real_time_data_Array[1] = self.eye_x
-                            print(self.eye_x)
                             self.real_time_data_Array[2] = self.eye_y
                             self.real_time_data_Array[3] = self.tgt_x
                             self.real_time_data_Array[4] = self.tgt_y
@@ -167,9 +227,13 @@ class CalRefineFsmProcess(multiprocessing.Process):
                 if run_exp: 
                     if fsm_parameter['mode'] == 'Auto':       
                         if fsm_parameter['auto_mode'] == 'Full':
+                            for counter_tgt in range(num_tgt):
+                                tgt_pos = fsm_parameter['tgt_auto_list'][counter_tgt]   
                             # Concatenate 1s to target and eye arrays
                             tgt_pos = np.array(fsm_parameter['tgt_pos'])
                             eye_pos = np.array(self.cal_eye_pos)
+                            print(tgt_pos)
+                            print(np.ones((tgt_pos.shape[0],1)))
                             tgt_pos_mat = np.hstack([tgt_pos,np.ones((tgt_pos.shape[0],1))])
                             eye_pos_mat = np.hstack([eye_pos,np.ones((eye_pos.shape[0],1))])
                             # Compute new calibration matrix that goes from the already calibrated eye data to target data
@@ -179,24 +243,27 @@ class CalRefineFsmProcess(multiprocessing.Process):
                             eye_pos_pred = eye_pos_pred[:,[0,1]]
                             RMSE = np.sqrt(np.sum(np.square(tgt_pos-eye_pos_pred))/num_tgt)
                             new_cal_matrix = new_cal_matrix.tolist()
-                            self.signals.to_main_thread.emit(('auto_mode_result',fsm_parameter['auto_mode'], [new_cal_matrix,RMSE]))
+                            self.fsm_to_gui_sndr.send(('auto_mode_result',fsm_parameter['auto_mode'], [new_cal_matrix,RMSE]))
                         elif fsm_parameter['auto_mode'] == 'Bias':
                             bias = np.empty((num_tgt,2))
                             for counter_tgt in range(num_tgt):
                                 tgt_pos = np.array(fsm_parameter['tgt_pos'][counter_tgt])     
                                 eye_pos = np.array(self.cal_eye_pos[counter_tgt])
-                                print(tgt_pos)
-                                print(eye_pos)
+                                # print(tgt_pos)
+                                # print(eye_pos)
                                 bias[counter_tgt] = tgt_pos - eye_pos
                             mean_bias = np.mean(bias, axis=0)
-                            self.signals.to_main_thread.emit(('auto_mode_result',fsm_parameter['auto_mode'], [mean_bias]))
-                            print(mean_bias)
-                # Signal completion
-                self.fsm_to_gui_sndr.send(('fsm_done',0))
+                            self.fsm_to_gui_sndr.send(('auto_mode_result',fsm_parameter['auto_mode'], [mean_bias]))
+                            # print(mean_bias)
+                # Signal completion, only if not already manually stopped
+                if run_exp: 
+                    self.fsm_to_gui_sndr.send(('fsm_done',0))
                 self.t = math.nan
-                self.real_time_data_Array[1] = self.t
+                self.real_time_data_Array[0] = self.t
                 run_exp = False
                 self.stop_exp_Event.set()
+        # Close PsychoPy
+        core.quit()  
         # Turn off VPixx schedule
         lib.VPixx_turn_off_schedule()
         # Close VPixx devices
@@ -205,43 +272,56 @@ class CalRefineFsmProcess(multiprocessing.Process):
         DPxUpdateRegCache()  
         DPxClose()        
         tracker.TRACKPixx3().close()  
-        # Signal completion
-        self.fsm_to_gui_sndr.send(('fsm_done',0))
         # Reset time
         self.t = math.nan
         # Init. var
         self.cal_eye_pos = []
-    def init_fsm_parameter(self):
-        fsm_parameter = {'mode': 'Auto',
-                         'auto_mode': 'Full',
-                         'tgt_dur': 1,
-                         'tgt_pos': [0,0],
-                         'center_tgt_pos': [0,0],
-                         'dist_from_center': 3,
-                         'rew_area': 2,
-                         'tgt_auto_list': [[0,0]],
-                         'auto_pump': True
-                         }
         
     def update_target(self):
-        tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,TargetWidget.set_default_parameter,'tgt')
+        tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'tgt')
         self.tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg', 
                       lineColor=tgt_parameter['line_color'],fillColor=tgt_parameter['fill_color'],
                       lineWidth=tgt_parameter['line_width'])
         self.tgt.draw() # draw once already, because the first draw may be slower - Poth, 2018   
         self.window.clearBuffer() # clear the back buffer of previously drawn stimuli - Poth, 2018
         
+    def set_default_parameter(self):
+        parameter = {
+                     'mode': 'Auto',
+                     'auto_mode': 'Full',
+                     'tgt_pos': [0,0],
+                     'tgt_dur': 1,
+                     'center_tgt_pos': [0,0],
+                     'dist_from_center': 4.0,
+                     'tgt_auto_list': [[0,0]],
+                     'rew_area': 4,
+                     'auto_pump': True
+                    }
+        return parameter
+    
 class CalRefineGui(FsmGui):
-    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array):
+    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array,main_parameter):
         self.exp_name = exp_name
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
         self.gui_to_fsm_sndr = gui_to_fsm_sndr
         self.stop_exp_Event = stop_exp_Event
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.real_time_data_Array = real_time_data_Array
+        self.main_parameter = main_parameter
         super(CalRefineGui,self).__init__(self.stop_fsm_process_Event)       
         self.init_gui()
-
+        
+        # Create socket for ZMQ
+        try:
+            context = zmq.Context()           
+            self.fsm_to_plot_priority_socket = context.socket(zmq.PUB)
+            self.fsm_to_plot_priority_socket.bind("tcp://192.168.0.2:5557")
+        except Exception as error:
+            self.log_QPlainTextEdit.appendPlainText('Error in starting zmq sockets:')
+            self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
+            self.toolbar_run_QAction.setDisabled(True)
+            self.toolbar_connect_QAction.setDisabled(True)
+            
         # Init. var
         self.tgt_fsm_list = []
         self.tgt_auto_list = []
@@ -267,9 +347,10 @@ class CalRefineGui(FsmGui):
         self.ROI_y_plot_2 = np.zeros(0)
                 
         # Load parameters
-        self.refine_parameter, self.parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,CalRefineFsmProcess.init_fsm_parameter, self.exp_name)
-        self.cal_parameter, self.parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,CalFsmProcess.init_fsm_parameter, 'calibration')
-        self.old_cal_matrix = self.cal_parameter['left_cal_matrix']
+        self.refine_parameter, self.parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,True,self.set_default_parameter, self.exp_name,self.main_parameter['current_monkey'])
+        self.cal_parameter, self.parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter, 'calibration',self.main_parameter['current_monkey'])
+        which_eye_tracked = self.cal_parameter['which_eye_tracked'].lower()
+        self.old_cal_matrix = self.cal_parameter[which_eye_tracked + '_cal_matrix']
         self.new_cal_matrix = copy.deepcopy(self.old_cal_matrix)
         self.tgt_pos_x_QDoubleSpinBox.setValue(self.refine_parameter['tgt_pos'][0])
         self.tgt_pos_y_QDoubleSpinBox.setValue(self.refine_parameter['tgt_pos'][1])
@@ -283,12 +364,14 @@ class CalRefineGui(FsmGui):
         if len(self.tgt_auto_list) > 0: 
             for x,y in self.tgt_auto_list:
                 self.tgt_fsm_list_QPlainTextEdit.appendPlainText('(' + '{:.1f}'.format(x) + ',' + '{:.1f}'.format(y) + ')') # for display purpose only
-        if not self.cal_parameter['left_cal_status']:
+        if not self.cal_parameter[which_eye_tracked + '_cal_status']:
             self.toolbar_run_QAction.setDisabled(True)
             self.log_QPlainTextEdit.appendPlainText('No calibration found. Please calibrate first.')
         
     #%% SIGNALS
         self.data_QTimer.timeout.connect(self.data_QTimer_timeout)
+        self.sidepanel_pump_1.clicked.connect(self.sidepanel_pump_1_clicked)
+        self.sidepanel_pump_2.clicked.connect(self.sidepanel_pump_2_clicked)
         # Plots
         self.plot_1_ROI_signal = pg.SignalProxy(self.plot_1_PlotWidget.scene().sigMouseClicked, rateLimit=60, slot=self.plot_1_PlotWidget_mouseClicked)
         self.plot_2_ROI_signal = pg.SignalProxy(self.plot_2_PlotWidget.scene().sigMouseClicked, rateLimit=60, slot=self.plot_2_PlotWidget_mouseClicked)
@@ -312,6 +395,7 @@ class CalRefineGui(FsmGui):
     def toolbar_run_QAction_triggered(self):
         # Save parameter
         self.refine_parameter['mode'] = self.cal_mode_QComboBox.currentText()
+        self.refine_parameter['auto_mode'] = self.cal_auto_mode_QComboBox.currentText()
         self.refine_parameter['tgt_pos'] = [self.tgt_pos_x_QDoubleSpinBox.value(),self.tgt_pos_y_QDoubleSpinBox.value()]
         self.refine_parameter['tgt_dur'] = self.tgt_dur_QDoubleSpinBox.value()
         self.refine_parameter['center_tgt_pos'] = [self.default_center_pos_x_QDoubleSpinBox.value(),self.default_center_pos_y_QDoubleSpinBox.value()]
@@ -321,7 +405,7 @@ class CalRefineGui(FsmGui):
         self.refine_parameter['auto_pump'] = self.auto_pump_QCheckBox.isChecked()
         with open(self.parameter_file_path,'r') as file:
             all_parameter = json.load(file)
-        all_parameter[self.exp_name] = self.refine_parameter  
+        all_parameter[self.main_parameter['current_monkey']][self.exp_name] = self.refine_parameter  
         with open(self.parameter_file_path,'w') as file:
             json.dump(all_parameter, file, indent=4)   
         self.log_QPlainTextEdit.appendPlainText('Saved parameters')
@@ -364,6 +448,8 @@ class CalRefineGui(FsmGui):
         self.plot_1_eye_selected.setData(np.zeros(0), np.zeros(0))
         self.plot_2_eye_x_selected.setData(np.zeros(0), np.zeros(0))
         self.plot_2_eye_y_selected.setData(np.zeros(0), np.zeros(0))
+        # Start FSM
+        self.stop_exp_Event.clear()  
         # Start timer to get data from fsm thread
         self.data_QTimer.start(self.data_rate)
         
@@ -383,7 +469,8 @@ class CalRefineGui(FsmGui):
         if self.new_cal == True:
             self.reset_cal_QPushButton.setEnabled(True)
             self.save_cal_QPushButton.setEnabled(True)
-   
+        self.init_mode_state()
+        
     @pyqtSlot()
     def cal_mode_QComboBox_currentTextChanged(self):
         self.init_mode_state()
@@ -397,6 +484,7 @@ class CalRefineGui(FsmGui):
     @pyqtSlot()
     def cal_auto_mode_QComboBox_currentTextChanged(self):
         pass 
+    
     @pyqtSlot()
     def select_ROI_QPushButton_clicked(self):
         x_span_data = np.array(self.eye_x_data)
@@ -435,6 +523,7 @@ class CalRefineGui(FsmGui):
         self.calibrate_QPushButton.setDisabled(True)  
         # Remove highlighted data
         self.erase_selected_data_plots()
+        
     @pyqtSlot()
     def calibrate_QPushButton_clicked(self):        
         self.reset_cal_QPushButton.setEnabled(True)
@@ -464,13 +553,14 @@ class CalRefineGui(FsmGui):
         self.new_cal = False
         # Update 'old' cal matrix
         self.old_cal_matrix = copy.deepcopy(self.new_cal_matrix)
-        self.cal_parameter['cal_matrix'] = self.old_cal_matrix
-        self.cal_parameter['RMSE'] = self.new_RMSE
+        which_eye_tracked = self.cal_parameter['which_eye_tracked'].lower()
+        self.cal_parameter[which_eye_tracked + '_cal_matrix'] = self.old_cal_matrix
+        self.cal_parameter[which_eye_tracked + '_RMSE'] = self.new_RMSE
         
         with open(self.parameter_file_path,'r') as file:
             all_parameter = json.load(file)
-        all_parameter[self.cal_name] = self.refine_parameter
-        all_parameter['calibration'] = self.cal_parameter  
+        all_parameter[self.main_parameter['current_monkey']][self.exp_name] = self.refine_parameter
+        all_parameter[self.main_parameter['current_monkey']]['calibration'] = self.cal_parameter  
         with open(self.parameter_file_path,'w') as file:
             json.dump(all_parameter, file, indent=4)   
             
@@ -494,16 +584,35 @@ class CalRefineGui(FsmGui):
             self.t_data.append(t)
             # Plot data
             self.plot_1_eye.setData(self.eye_x_data,self.eye_y_data)
-            # self.plot_1_tgt.setData([tgt_x],[tgt_y])
-            # self.plot_2_eye_x.setData(self.t_data,self.eye_x_data)
-            # self.plot_2_eye_y.setData(self.t_data,self.eye_y_data)
-            # self.plot_2_tgt_x.setData(self.t_data,self.tgt_x_data)
-            # self.plot_2_tgt_y.setData(self.t_data,self.tgt_y_data)
+            self.plot_1_tgt.setData([tgt_x],[tgt_y])
+            self.plot_2_eye_x.setData(self.t_data,self.eye_x_data)
+            self.plot_2_eye_y.setData(self.t_data,self.eye_y_data)
+            self.plot_2_tgt_x.setData(self.t_data,self.tgt_x_data)
+            self.plot_2_tgt_y.setData(self.t_data,self.tgt_y_data)
         if self.fsm_to_gui_rcvr.poll():
             msg = self.fsm_to_gui_rcvr.recv()
             msg_title = msg[0]
             if msg_title == 'fsm_done':
                 self.toolbar_stop_QAction_triggered()
+            if msg_title == 'pump_1':
+                self.sidepanel_pump_1_clicked()  
+            if msg_title == 'auto_mode_result':
+                if msg[1] == 'Full':
+                    self.reset_cal_QPushButton.setEnabled(True)
+                    self.save_cal_QPushButton.setEnabled(True)
+                    self.new_cal = True
+                    self.new_cal_matrix = msg[2][0]
+                    self.new_RMSE = msg[2][1]
+                    self.log_QPlainTextEdit.appendPlainText('Old RMSE: ' + '{:.2f}'.format(self.cal_parameter['RMSE']) + ' New RMSE: '+ '{:.2f}'.format(self.new_RMSE)) 
+                elif msg[1] == 'Bias':
+                    self.reset_cal_QPushButton.setEnabled(True)
+                    self.save_cal_QPushButton.setEnabled(True)
+                    self.new_cal = True
+                    # Update new calibration
+                    bias = msg[2][0] 
+                    self.new_cal_matrix[2][0] = self.new_cal_matrix[2][0] + bias[0]
+                    self.new_cal_matrix[2][1] = self.new_cal_matrix[2][1] + bias[1]
+                    self.log_QPlainTextEdit.appendPlainText('Auto bias change: '+'({:.2f}'.format(bias[0]) + ',' + '{:.2f}'.format(bias[1]) + ')')
     @pyqtSlot()
     def clear_ROI_QPushButton_clicked(self):
         self.ROI_x_plot_1 = np.zeros(0)
@@ -514,38 +623,6 @@ class CalRefineGui(FsmGui):
         self.plot_1_ROI_firstToLast.setData(np.zeros(0), np.zeros(0))
         self.plot_2_ROI.setData(np.zeros(0), np.zeros(0))
         self.plot_2_ROI_firstToLast.setData(np.zeros(0), np.zeros(0))
-        
-    @pyqtSlot(object)
-    def receive_fsm_signal(self, signal):
-        message = signal[0]
-        if message == 'pump':
-            self.pump_1.pump_once_QPushButton_clicked()       
-        if message == 'fsm_done':  
-            self.sidepanel_parameter_QWidget.setEnabled(True)
-            self.tgt.setEnabled(True)
-            self.pd_tgt.setEnabled(True)
-            self.toolbar_run_QAction.setEnabled(True)
-            self.toolbar_stop_QAction.setDisabled(True)
-            self.init_mode_state()
-            # Stop timer to stop getting data from fsm thread
-            self.data_QTimer.stop()
-        if message == 'auto_mode_result':
-            if signal[1] == 'Full':
-                self.reset_cal_QPushButton.setEnabled(True)
-                self.save_cal_QPushButton.setEnabled(True)
-                self.new_cal = True
-                self.new_cal_matrix = signal[2][0]
-                self.new_RMSE = signal[2][1]
-                self.log_QPlainTextEdit.appendPlainText('Old RMSE: ' + '{:.2f}'.format(self.cal_parameter['RMSE']) + ' New RMSE: '+ '{:.2f}'.format(self.new_RMSE)) 
-            elif signal[1] == 'Bias':
-                self.reset_cal_QPushButton.setEnabled(True)
-                self.save_cal_QPushButton.setEnabled(True)
-                self.new_cal = True
-                # Update new calibration
-                bias = signal[2][0] 
-                self.new_cal_matrix[2][0] = self.new_cal_matrix[2][0] + bias[0]
-                self.new_cal_matrix[2][1] = self.new_cal_matrix[2][1] + bias[1]
-                self.log_QPlainTextEdit.appendPlainText('Auto bias change: '+'({:.2f}'.format(bias[0]) + ',' + '{:.2f}'.format(bias[1]) + ')')
             
     def plot_1_PlotWidget_mouseClicked(self, mouseEvent):
         if mouseEvent[0].button() == QtCore.Qt.LeftButton and self.cal_mode_QComboBox.currentText() == 'Manual'\
@@ -589,6 +666,7 @@ class CalRefineGui(FsmGui):
             tgt_x = self.tgt_pos_x_QDoubleSpinBox.value()
             tgt_y = self.tgt_pos_y_QDoubleSpinBox.value()
             self.add_tgt_to_list(tgt_x,tgt_y)
+            
     @pyqtSlot()
     def add_default_tgt_QPushButton_clicked(self):
         '''
@@ -609,8 +687,30 @@ class CalRefineGui(FsmGui):
     def reset_tgt_fsm_list_QPushButton_clicked(self):
         self.tgt_auto_list = []
         self.tgt_fsm_list_QPlainTextEdit.clear()
+    
+    @pyqtSlot()
+    def sidepanel_pump_1_clicked(self):
+        msg = ('pump_1', 0)
+        self.fsm_to_plot_priority_socket.send_pyobj(msg)
+    
+    @pyqtSlot()
+    def sidepanel_pump_2_clicked(self):
+        msg = ('pump_2', 0)
+        self.fsm_to_plot_priority_socket.send_pyobj(msg)
     #%% GUI
     def init_gui(self):
+        # Disable pumps
+        self.pump_1.deleteLater()
+        self.pump_2.deleteLater()
+        # Add in pump functions; send command to plotting computer
+        self.sidepanel_pump_QWidget = QWidget()
+        self.sidepanel_QTabWidget.addTab(self.sidepanel_pump_QWidget, 'Pump')
+        self.sidepanel_pump_QVBoxLayout = QVBoxLayout()
+        self.sidepanel_pump_QWidget.setLayout(self.sidepanel_pump_QVBoxLayout)
+        self.sidepanel_pump_1 = QPushButton('1')
+        self.sidepanel_pump_QVBoxLayout.addWidget(self.sidepanel_pump_1)
+        self.sidepanel_pump_2 = QPushButton('2')
+        self.sidepanel_pump_QVBoxLayout.addWidget(self.sidepanel_pump_2)
         # Customize plots
         self.plot_1_eye = self.plot_1_PlotWidget.\
             plot(np.zeros((0)), np.zeros((0)), pen = None,\
@@ -773,6 +873,7 @@ class CalRefineGui(FsmGui):
     def add_tgt_to_list(self,x,y):
         self.tgt_fsm_list_QPlainTextEdit.appendPlainText('(' + '{:.1f}'.format(x) + ',' + '{:.1f}'.format(y) + ')') # for display purpose only
         self.tgt_auto_list.append((x,y))
+    
     def init_auto_mode(self):
         self.cal_auto_mode_QComboBox.setEnabled(True)
         self.select_ROI_QPushButton.setDisabled(True)
@@ -788,6 +889,7 @@ class CalRefineGui(FsmGui):
         self.auto_pump_QCheckBox.setEnabled(True)
         self.reset_tgt_fsm_list_QPushButton.setEnabled(True)
         
+   
     def init_manual_mode(self):
         self.cal_auto_mode_QComboBox.setEnabled(False)
         self.select_ROI_QPushButton.setEnabled(True)
@@ -802,6 +904,7 @@ class CalRefineGui(FsmGui):
         self.add_default_tgt_QPushButton.setEnabled(False)
         self.auto_pump_QCheckBox.setEnabled(False)
         self.reset_tgt_fsm_list_QPushButton.setEnabled(False)
+        
     def init_mode_state(self):
         # Initialize some functions depending on mode state
         if self.cal_mode_QComboBox.currentText() == 'Manual':
@@ -819,13 +922,28 @@ class CalRefineGui(FsmGui):
         self.plot_2_eye_y.setData(np.zeros(0),np.zeros(0))
         self.plot_2_tgt_x.setData(np.zeros(0),np.zeros(0))
         self.plot_2_tgt_y.setData(np.zeros(0),np.zeros(0))
+        
     def erase_selected_data_plots(self):
         self.plot_1_eye_selected.setData(np.zeros(0),np.zeros(0))
         self.plot_2_eye_x_selected.setData(np.zeros(0), np.zeros(0))
         self.plot_2_eye_y_selected.setData(np.zeros(0), np.zeros(0))
-        
+    
+    def set_default_parameter(self):
+        parameter = {
+                     'mode': 'Auto',
+                     'auto_mode': 'Full',
+                     'tgt_pos': [0,0],
+                     'tgt_dur': 1,
+                     'center_tgt_pos': [0,0],
+                     'dist_from_center': 4.0,
+                     'tgt_auto_list': [[0,0]],
+                     'rew_area': 4,
+                     'auto_pump': True
+                    }
+        return parameter
+    
 class CalRefineGuiProcess(multiprocessing.Process):
-    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array,parent=None):
+    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array,main_parameter,parent=None):
         super(CalRefineGuiProcess,self).__init__(parent)
         self.exp_name = exp_name
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
@@ -833,9 +951,10 @@ class CalRefineGuiProcess(multiprocessing.Process):
         self.stop_exp_Event = stop_exp_Event
         self.real_time_data_Array = real_time_data_Array
         self.stop_fsm_process_Event = stop_fsm_process_Event
+        self.main_parameter = main_parameter
     def run(self):  
         fsm_app = QApplication(sys.argv)
-        fsm_app_gui = CalRefineGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array)
+        fsm_app_gui = CalRefineGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array, self.main_parameter)
         fsm_app_gui.setWindowIcon(QtGui.QIcon(os.path.join('.', 'icon', 'experiment_window.png')))
         fsm_app_gui.show()
         sys.exit(fsm_app.exec())
