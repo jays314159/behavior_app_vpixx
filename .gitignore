@@ -2,6 +2,7 @@
 monitor_setting.json
 pump_parameter.json
 tgt_parameter.json
+main_parameter.json
 /experiment/exp_parameter.json
 /calibration/cal_parameter.json
 # Ignore python runtime files
