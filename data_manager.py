@@ -4,13 +4,14 @@ Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
 """
 from PyQt5.QtCore import QRunnable, pyqtSignal, pyqtSlot, QObject
 
+# VPixx related
 from pypixxlib._libdpx import DPxOpen, TPxEnableFreeRun, DPxSelectDevice, DPxUpdateRegCache, TPxDisableFreeRun, TPxSetupTPxSchedule
-import h5py
 
 import os
 from datetime import date, datetime
 from pathlib import Path
 import numpy as np
+import h5py
 
 class DataManagerSignals(QObject):
     to_main_thread = pyqtSignal(object)

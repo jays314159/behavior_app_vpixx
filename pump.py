@@ -7,10 +7,11 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QDoubleSp
                             QLineEdit, QPlainTextEdit, QShortcut
 from PyQt5.QtCore import Qt, QThreadPool, QRunnable, pyqtSlot, QTimer, QObject, pyqtSignal
 
+import app_lib as lib
+
 import serial, os, json, time,traceback
 from pathlib import Path
 
-import app_lib as lib
 
 class PumpSignal(QObject):
     vol_dispensed = pyqtSignal(float)

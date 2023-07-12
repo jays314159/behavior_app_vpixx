@@ -7,8 +7,8 @@ from PyQt5.QtWidgets import QMainWindow, QVBoxLayout, QSplitter, QWidget, QTabWi
                             QShortcut, QPlainTextEdit          
 from PyQt5.QtCore import Qt, QThreadPool,QTimer
 from PyQt5.QtGui import QKeySequence
-import pyqtgraph as pg
 
+# VPixx related
 from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, DPxClose, TPxSetupTPxSchedule, TPxDisableFreeRun, DPxSelectDevice, DPxUpdateRegCache,\
                               DPxSetTPxSleep, DPxGetError, DPxSetTPxAwake
@@ -20,6 +20,7 @@ from sound import Sound
 import time, os
 import numpy as np
 from collections import deque
+import pyqtgraph as pg
 
 class FsmGui(QMainWindow):
     def __init__(self, stop_fsm_process_Event):        

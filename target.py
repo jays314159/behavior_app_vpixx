@@ -2,10 +2,10 @@ from PyQt5.QtCore import QObject, Qt
 from PyQt5.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QDoubleSpinBox,QComboBox,QPushButton
 from PyQt5.QtGui import QColor
 
+import app_lib as lib
+
 from pathlib import Path
 import os, json
-
-import app_lib as lib
 
 class TargetWidget(QWidget,QObject):
     def __init__(self,tgt_name, parent=None):
