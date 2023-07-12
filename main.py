@@ -13,17 +13,17 @@ from calibration.calibration import CalFsmProcess, CalGuiProcess
 from calibration.refinement import CalRefineFsmProcess, CalRefineGuiProcess
 from experiment.simple_saccade import SimpleSacGuiProcess, SimpleSacFsmProcess
 from experiment.corr_saccade import CorrSacGuiProcess, CorrSacFsmProcess
-
 from target import TargetWidget
 import app_lib as lib
 
 import sys, multiprocessing, os, json, time, traceback
 from pathlib import Path
 import pyqtgraph as pg
+
 class MainGui(QMainWindow):
     def __init__(self, parent = None):
         super(MainGui,self).__init__(parent)
-        multiprocessing.set_start_method('spawn')
+        multiprocessing.set_start_method('spawn') # start child process that isn't a copy of the main one
         
         # Build menu
         self.menubar = self.menuBar()
@@ -191,9 +191,9 @@ class MainGui(QMainWindow):
         self.log_QPlainTextEdit.setReadOnly(True)
         self.main_QVBoxLayout.addWidget(self.log_QPlainTextEdit)
         
-        self.lock_parameter()
+        self.lock_parameter() # to prevent accidental changes
         
-        # Load parameters
+        # Load and set parameters
         self.mon_parameter, self.mon_parameter_file_path = lib.load_parameter('','monitor_setting.json',False,False,self.set_default_mon_parameter)
         self.monitor_name_QLineEdit.setText(self.mon_parameter['monitor_name'])
         self.monitor_total_num_QSpinBox.setValue(self.mon_parameter['num_monitor'])
@@ -204,7 +204,6 @@ class MainGui(QMainWindow):
         self.monitor_size_vert_QDoubleSpinBox.setValue(self.mon_parameter['monitor_size'][1])
         self.monitor_dist_QDoubleSpinBox.setValue(self.mon_parameter['monitor_distance'])
         self.monitor_width_QDoubleSpinBox.setValue(self.mon_parameter['monitor_width'])
-        
         
         self.main_parameter, self.main_parameter_file_path = lib.load_parameter('','main_parameter.json',False,False,self.set_default_parameter)
         for monkey_id in self.main_parameter['monkey']:
@@ -241,10 +240,14 @@ class MainGui(QMainWindow):
         
         self.save_parameter()
         
+        # Create a separate process for finite state machine (FSM) to run exp. and 
+        # for GUI to control it.
+        # Using Pipe to transfer data btwn processes.
+        # Using Event to control stop and start of the experiment
         stop_exp_Event = multiprocessing.Event()
         stop_exp_Event.set()
         stop_fsm_process_Event = multiprocessing.Event()
-        fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False)
+        fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False) 
         gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
         
         real_time_data_Array = multiprocessing.Array('d', range(5))
@@ -253,7 +256,7 @@ class MainGui(QMainWindow):
         gui_process = SimpleSacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
         
         fsm_process.start()
-        time.sleep(0.25)
+        time.sleep(0.25) # without this artificial delay, sometimes causes error
         gui_process.start()
         
     def corr_sac_QAction_triggered(self):
@@ -267,6 +270,10 @@ class MainGui(QMainWindow):
         
         self.save_parameter()
         
+        # Create a separate process for finite state machine (FSM) to run exp. and 
+        # for GUI to control it.
+        # Using Pipe to transfer data btwn processes.
+        # Using Event to control stop and start of the experiment
         stop_exp_Event = multiprocessing.Event()
         stop_exp_Event.set()
         stop_fsm_process_Event = multiprocessing.Event()
@@ -279,7 +286,7 @@ class MainGui(QMainWindow):
         gui_process = CorrSacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
                             
         fsm_process.start()
-        time.sleep(0.25)
+        time.sleep(0.25) # without this artificial delay, sometimes causes error
         gui_process.start()
     
     def cal_QAction_triggered(self):
@@ -293,6 +300,10 @@ class MainGui(QMainWindow):
         
         self.save_parameter()
         
+        # Create a separate process for finite state machine (FSM) to run exp. and 
+        # for GUI to control it.
+        # Using Pipe to transfer data btwn processes.
+        # Using Event to control stop and start of the experiment
         stop_exp_Event = multiprocessing.Event()
         stop_exp_Event.set()
         stop_fsm_process_Event = multiprocessing.Event()
@@ -305,7 +316,7 @@ class MainGui(QMainWindow):
         gui_process = CalGuiProcess(cal_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
         
         fsm_process.start()
-        time.sleep(0.25)
+        time.sleep(0.25) # without this artificial delay, sometimes causes error
         gui_process.start()
     
     def refine_cal_QAction_triggered(self):    
@@ -319,6 +330,10 @@ class MainGui(QMainWindow):
         
         self.save_parameter()
         
+        # Create a separate process for finite state machine (FSM) to run exp. and 
+        # for GUI to control it.
+        # Using Pipe to transfer data btwn processes.
+        # Using Event to control stop and start of the experiment
         stop_exp_Event = multiprocessing.Event()
         stop_exp_Event.set()
         stop_fsm_process_Event = multiprocessing.Event()
@@ -331,7 +346,7 @@ class MainGui(QMainWindow):
         gui_process = CalRefineGuiProcess(cal_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
         
         fsm_process.start()
-        time.sleep(0.25)
+        time.sleep(0.25) # without this artificial delay, sometimes causes error
         gui_process.start()
         
     def monitor_total_num_QSpinBox_valueChanged(self):
@@ -472,6 +487,7 @@ class MainGui(QMainWindow):
             pg.exit() # this should come at the end 
         except:
             pass
+        
 if __name__ == '__main__':
     if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):        
         main_app = QApplication(sys.argv)
