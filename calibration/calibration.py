@@ -9,20 +9,20 @@ from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, 
 from PyQt5.QtGui import QKeySequence
 from psychopy import monitors, visual, core
 
-import pyqtgraph as pg
-
+# VPixx related
 from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxSelectDevice,DPxUpdateRegCache, DPxSetTPxAwake,\
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetTPxSleep,DPxClose
+
+from fsm_gui import FsmGui
+from target import TargetWidget
+import app_lib as lib
 
 import multiprocessing, sys, os, json, random, time, copy, ctypes, math, zmq
 sys.path.append('../app')
 from pathlib import Path
 import numpy as np
-
-from fsm_gui import FsmGui
-from target import TargetWidget
-import app_lib as lib
+import pyqtgraph as pg
 
 class CalFsmProcess(multiprocessing.Process):
     def __init__(self, exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, main_parameter, mon_parameter):
@@ -521,7 +521,6 @@ class CalGui(FsmGui):
             msg_title = msg[0]
             if msg_title == 'fsm_done':
                 self.toolbar_stop_QAction_triggered()
-                # print('fsm_done triggered')
             if msg_title == 'log':
                 self.log_QPlainTextEdit.appendPlainText(msg[1])
                 

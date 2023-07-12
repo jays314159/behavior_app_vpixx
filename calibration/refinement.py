@@ -7,22 +7,23 @@ from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxL
                             QDialog, QShortcut, QWidget, QVBoxLayout
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
 from PyQt5.QtGui import QKeySequence
-import pyqtgraph as pg
 from psychopy import monitors, visual, core
 
+# VPixx related
 from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxSelectDevice,DPxUpdateRegCache, DPxSetTPxAwake,\
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetTPxSleep,DPxClose
 
-import multiprocessing, sys, os, json, random, time, copy, ctypes, math, zmq
-from pathlib import Path
-import numpy as np
-from collections import deque
-
-sys.path.append('../app')
 from fsm_gui import FsmGui
 from target import TargetWidget
 import app_lib as lib
+
+import multiprocessing, sys, os, json, random, time, copy, ctypes, math, zmq
+sys.path.append('../app')
+from pathlib import Path
+import numpy as np
+from collections import deque
+import pyqtgraph as pg
 
 class CalRefineFsmProcess(multiprocessing.Process):
     def __init__(self,  exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, main_parameter, mon_parameter):

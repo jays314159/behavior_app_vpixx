@@ -8,12 +8,16 @@ from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxL
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
 from psychopy import monitors, visual, core
 
-import pyqtgraph as pg
-
+# VPixx related
 from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxSelectDevice,DPxUpdateRegCache, DPxSetTPxAwake,\
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetDoutValue, TPxReadTPxData,\
                               DPxSetTPxSleep, DPxClose
+
+from fsm_gui import FsmGui
+from target import TargetWidget
+import app_lib as lib
+from data_manager import DataManager
 
 import multiprocessing, sys, os, json, random, time, copy, ctypes, traceback, gc, math, zmq
 sys.path.append('../app')
@@ -21,11 +25,7 @@ from pathlib import Path
 import numpy as np
 from collections import deque
 from datetime import datetime
-
-from fsm_gui import FsmGui
-from target import TargetWidget
-import app_lib as lib
-from data_manager import DataManager
+import pyqtgraph as pg
 
 class SimpleSacFsmProcess(multiprocessing.Process):
     def __init__(self,exp_name, fsm_to_gui_sndr, gui_to_fsm_Q, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array,main_parameter,mon_parameter):
@@ -50,12 +50,7 @@ class SimpleSacFsmProcess(multiprocessing.Process):
         self.t = math.nan
         self.pull_data_t = 0 # keep track of when data was pulled last from VPixx
     
-    def run(self):
-        # import faulthandler
-        # faulthandler.disable()
-        # faulthandler.enable()
-        # gc.disable()
-        
+    def run(self):        
         # Set up exp. screen
         this_monitor = monitors.Monitor(self.mon_parameter['monitor_name'], width=self.mon_parameter['monitor_width'], distance=self.mon_parameter['monitor_distance'])
         this_monitor.save()
@@ -125,8 +120,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                 if self.stop_exp_Event.is_set():
                     run_exp = False
                     self.t = math.nan
-                    # # Save current trial data
-                    # self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                     # Turn off VPixx schedule
                     lib.VPixx_turn_off_schedule()
                     # Remove all targets
@@ -143,8 +136,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                     if self.stop_exp_Event.is_set():
                         run_exp = False
                         self.t = math.nan
-                        # # Save current trial data
-                        # self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                         # Turn off VPixx schedule
                         lib.VPixx_turn_off_schedule()
                         # Remove all targets
@@ -238,7 +229,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         self.window.flip() 
                         state = 'STR_TARGET_PURSUIT'
-                        # print('state = STR_TARGET_PURSUIT')
                         
                     if state == 'STR_TARGET_PURSUIT':
                         pursuit_x = pursuit_v_x*(self.t-state_start_time) + pursuit_start_x
@@ -259,7 +249,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip()                     
-                            # print('state = STR_TARGET_PRESENT')
                         if self.t - self.pull_data_t > 5:
                             self.pull_data_t = self.t
                             self.pull_data()
@@ -278,7 +267,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_fixation'].append(self.t)
                             state = 'STR_TARGET_FIXATION'
-                            # print('state = STR_TARGET_FIXATION')
                         elif (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             state_start_time = self.t
                             state_inter_time = self.t
@@ -310,7 +298,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             self.window.flip() 
                             lib.playSound(1000,0.1) # neutral beep  
                             state = 'CUE_TARGET_PRESENT'
-                            # print('state = CUE_TARGET_PRESENT')
                         if (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             state_start_time = self.t
                             state_inter_time = self.t
@@ -327,10 +314,8 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         state_inter_time = self.t
                         self.trial_data['state_start_t_detect_sac_start'].append(self.t)
                         state = 'DETECT_SACCADE_START'
-                        # print('state = DETECT_SACCADE_START')
                         
                     if state == 'DETECT_SACCADE_START':
-                        # self.present_tgt_and_pd_tgt()
                         eye_dist_from_start_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
                         if eye_speed >= fsm_parameter['sac_detect_threshold']:         
                             state_start_time = self.t
@@ -366,10 +351,7 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         # Check to see if saccade is in the right direction
                         target_dir_vector = [self.cue_x-self.start_x,self.cue_y-self.start_y]
                         unit_target_dir_vector = target_dir_vector/np.linalg.norm(target_dir_vector)
-                        ######
-                        # saccade_dir_vector = [self.eye_x-self.start_x,self.eye_y-self.start_y]
                         saccade_dir_vector = eye_vel
-                        ######
                         unit_saccade_dir_vector = saccade_dir_vector/np.linalg.norm(saccade_dir_vector)                    
                         angle_diff = np.arccos(np.dot(unit_target_dir_vector, unit_saccade_dir_vector))
 
@@ -390,7 +372,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_detect_sac_end'].append(self.t)
                             state = 'DETECT_SACCADE_END'
-                            # print('state = DETECT_SACCADE_END')
                             
                     if state == 'DETECT_SACCADE_END':
                         if (eye_speed < fsm_parameter['sac_on_off_threshold']) and (self.t-state_start_time > 0.005):#25):
@@ -401,7 +382,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                                   state_inter_time = self.t
                                   self.trial_data['state_start_t_deliver_rew'].append(self.t)
                                   state = 'DELIVER_REWARD'
-                                  # print('state = DELIVER_REWARD')
                               else:
                                   state_start_time = self.t
                                   state_inter_time = self.t
@@ -441,7 +421,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         self.window.flip()
                         state = 'END_TARGET_FIXATION'  
-                        # print('state = END_TARGET_FIXATION')
                         
                     if state == 'END_TARGET_FIXATION':
                         eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
@@ -451,7 +430,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_trial_success'].append(self.t)
                             self.window.flip() # remove all targets
                             state = 'TRIAL_SUCCESS'
-                            # print('state = TRIAL_SUCCESS')
                         # If time runs out before fixation finished, reset the trial
                         # No explicit fixation required
                         elif (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
@@ -521,8 +499,6 @@ class SimpleSacFsmProcess(multiprocessing.Process):
         dout_ch_2 = 0 # random signal
         DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
         DPxUpdateRegCache()
-        # # Signal successful exit
-        # self.fsm_to_gui_sndr.send(1) 
         # Reset time
         self.t = math.nan
  
@@ -546,8 +522,7 @@ class SimpleSacFsmProcess(multiprocessing.Process):
         self.trial_data['din_data'].extend(tpxData[0][7::22])
         self.trial_data['dout_data'].extend(tpxData[0][10::22])
 
-        TPxSetupTPxSchedule() # flushes data
-        # print('finished pulling data')
+        TPxSetupTPxSchedule() # flushes data in DATAPixx buffer
     
     def update_target(self):
         tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'tgt')
