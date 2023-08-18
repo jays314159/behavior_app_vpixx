@@ -109,8 +109,8 @@ class CorrSacFsmProcess(multiprocessing.Process):
                 left_eye_blink = True
                 # Reset digital out
                 dout_ch_1 = 1 # nominal PD
-                dout_ch_2 = 0 # random signal
-                DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                dout_ch_3 = 0 # random signal
+                DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                 DPxUpdateRegCache()
                 
                 run_exp = True        
@@ -144,10 +144,10 @@ class CorrSacFsmProcess(multiprocessing.Process):
                     if (self.t - random_signal_t) > random_signal_flip_duration:
                         random_signal_t = self.t
                         if random.random() > 0.5:
-                            dout_ch_2 = 1 
+                            dout_ch_3 = 1 
                         else:
-                            dout_ch_2 = 0
-                    DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            dout_ch_3 = 0
+                    DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                     # Get time       
                     self.t = TPxBestPolyGetEyePosition(cal_data, raw_data) # this calls 'DPxUpdateRegCache' as well
 
@@ -229,7 +229,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                         dout_ch_1 = 0
                         self.pd_tgt.draw()
-                        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                         DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         self.window.flip() 
                         state = 'STR_TARGET_PURSUIT'
@@ -250,7 +250,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state = 'STR_TARGET_PRESENT'  
                             dout_ch_1 = 1
                             self.tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip()                     
                         if self.t - self.pull_data_t > 5:
@@ -277,7 +277,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             dout_ch_1 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
@@ -297,7 +297,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.tgt.draw()
                             self.pd_tgt.draw()
                             dout_ch_1 = 0
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             lib.playSound(1000,0.1) # neutral beep  
@@ -308,7 +308,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             dout_ch_1 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'  
@@ -332,7 +332,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                             dout_ch_1 = 1
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'INCORRECT_SACCADE'
@@ -346,7 +346,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             dout_ch_1 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
@@ -364,7 +364,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                             dout_ch_1 = 1
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'INCORRECT_SACCADE'
@@ -396,7 +396,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                                 state_inter_time = self.t
                                 self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                                 dout_ch_1 = 1
-                                DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                                DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                                 DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                                 self.window.flip() 
                                 state = 'INCORRECT_SACCADE'
@@ -407,7 +407,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             dout_ch_1 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
@@ -430,7 +430,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_end_tgt_fixation'].append(self.t)
                             self.tgt.draw()
                             dout_ch_1 = 1
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip()
                             state = 'END_TARGET_FIXATION'  
@@ -441,7 +441,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             dout_ch_1 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
@@ -451,7 +451,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             dout_ch_1 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
@@ -472,7 +472,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             dout_ch_1 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'                     
@@ -484,7 +484,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             dout_ch_1 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
@@ -529,8 +529,8 @@ class CorrSacFsmProcess(multiprocessing.Process):
         tracker.TRACKPixx3().close()  
         # Reset digital out
         dout_ch_1 = 1 # nominal PD
-        dout_ch_2 = 0 # random signal
-        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_2, bitMask)
+        dout_ch_3 = 0 # random signal
+        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3, bitMask)
         DPxUpdateRegCache()
         # Reset time
         self.t = math.nan
