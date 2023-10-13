@@ -198,7 +198,7 @@ class CalRefineFsmProcess(multiprocessing.Process):
                                     state_inter_time = self.t 
                                 # Min. fixation time req.    
                                 if ((fsm_parameter['mode'] == 'Auto') or (fsm_parameter['mode'] == 'Test'))\
-                                    and ((self.t-state_inter_time) >= 0.1): 
+                                    and ((self.t-state_inter_time) >= fsm_parameter['min_fix_time']): 
                                     # Erase target
                                     self.window.flip()
                                     state = 'DELIVER_REWARD'
@@ -287,6 +287,7 @@ class CalRefineFsmProcess(multiprocessing.Process):
                      'auto_mode': 'Full',
                      'tgt_pos': [0,0],
                      'tgt_dur': 1,
+                     'min_fix_time': 0.1,
                      'center_tgt_pos': [0,0],
                      'dist_from_center': 4.0,
                      'tgt_auto_list': [[0,0]],
@@ -354,6 +355,7 @@ class CalRefineGui(FsmGui):
         self.tgt_pos_x_QDoubleSpinBox.setValue(self.refine_parameter['tgt_pos'][0])
         self.tgt_pos_y_QDoubleSpinBox.setValue(self.refine_parameter['tgt_pos'][1])
         self.tgt_dur_QDoubleSpinBox.setValue(self.refine_parameter['tgt_dur'])
+        self.min_fix_time_QDoubleSpinBox.setValue(self.refine_parameter['min_fix_time'])
         self.default_center_pos_x_QDoubleSpinBox.setValue(self.refine_parameter['center_tgt_pos'][0])
         self.default_center_pos_y_QDoubleSpinBox.setValue(self.refine_parameter['center_tgt_pos'][1])
         self.default_dist_QDoubleSpinBox.setValue(self.refine_parameter['dist_from_center'])
@@ -404,6 +406,7 @@ class CalRefineGui(FsmGui):
         self.refine_parameter['rew_area'] = self.default_rew_area_QDoubleSpinBox.value()
         self.refine_parameter['tgt_auto_list'] = self.tgt_auto_list
         self.refine_parameter['auto_pump'] = self.auto_pump_QCheckBox.isChecked()
+        self.refine_parameter['min_fix_time'] = self.min_fix_time_QDoubleSpinBox.value()
         with open(self.parameter_file_path,'r') as file:
             all_parameter = json.load(file)
         all_parameter[self.main_parameter['current_monkey']][self.exp_name] = self.refine_parameter  
@@ -825,6 +828,17 @@ class CalRefineGui(FsmGui):
         self.tgt_dur_QHBoxLayout.addWidget(self.tgt_dur_QDoubleSpinBox)
         self.sidepanel_custom_QVBoxLayout.addLayout(self.tgt_dur_QHBoxLayout)
         
+        self.min_fix_time_QHBoxLayout = QHBoxLayout()
+        self.min_fix_time_QLabel = QLabel("Minimum Fixation Time (s):")
+        self.min_fix_time_QHBoxLayout.addWidget(self.min_fix_time_QLabel)
+        self.min_fix_time_QDoubleSpinBox = QDoubleSpinBox()
+        self.min_fix_time_QDoubleSpinBox.setValue(0)
+        self.min_fix_time_QDoubleSpinBox.setMaximum(10)
+        self.min_fix_time_QDoubleSpinBox.setSingleStep(0.05)
+        self.min_fix_time_QDoubleSpinBox.setDecimals(2)
+        self.min_fix_time_QHBoxLayout.addWidget(self.min_fix_time_QDoubleSpinBox)
+        self.sidepanel_custom_QVBoxLayout.addLayout(self.min_fix_time_QHBoxLayout)
+        
         self.default_tgt_QLabel = QLabel('<b>Default Auto Targets</b>')
         self.default_tgt_QLabel.setAlignment(Qt.AlignCenter)
         self.sidepanel_custom_QVBoxLayout.addWidget(self.default_tgt_QLabel)
@@ -903,6 +917,7 @@ class CalRefineGui(FsmGui):
         self.deselect_QPushButton.setDisabled(True)
         self.tgt_pos_add_QPushButton.setEnabled(True)
         self.tgt_dur_QDoubleSpinBox.setEnabled(False)
+        self.min_fix_time_QDoubleSpinBox.setEnabled(True)
         self.default_center_pos_x_QDoubleSpinBox.setEnabled(True)
         self.default_center_pos_y_QDoubleSpinBox.setEnabled(True)
         self.default_dist_QDoubleSpinBox.setEnabled(True)
@@ -919,6 +934,7 @@ class CalRefineGui(FsmGui):
         self.deselect_QPushButton.setEnabled(True)
         self.tgt_pos_add_QPushButton.setEnabled(False)
         self.tgt_dur_QDoubleSpinBox.setEnabled(True)
+        self.min_fix_time_QDoubleSpinBox.setDisabled(True)
         self.default_center_pos_x_QDoubleSpinBox.setEnabled(False)
         self.default_center_pos_y_QDoubleSpinBox.setEnabled(False)
         self.default_dist_QDoubleSpinBox.setEnabled(False)
@@ -956,6 +972,7 @@ class CalRefineGui(FsmGui):
                      'auto_mode': 'Full',
                      'tgt_pos': [0,0],
                      'tgt_dur': 1,
+                     'min_fix_time': 0.1,
                      'center_tgt_pos': [0,0],
                      'dist_from_center': 4.0,
                      'tgt_auto_list': [[0,0]],
