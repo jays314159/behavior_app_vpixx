@@ -4,7 +4,7 @@ Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
 """
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxLayout, QDoubleSpinBox, QCheckBox, QPlainTextEdit,\
-                            QDialog, QShortcut, QWidget, QVBoxLayout
+                            QDialog, QShortcut, QWidget, QVBoxLayout, QRadioButton
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
 from PyQt5.QtGui import QKeySequence
 from psychopy import monitors, visual, core
@@ -318,6 +318,9 @@ class CalRefineGui(FsmGui):
             self.toolbar_run_QAction.setDisabled(True)
             self.toolbar_connect_QAction.setDisabled(True)
             
+        # Init. extra shortcuts
+        self.pump_QShortcut = QShortcut(Qt.Key_P, self)
+        
         # Init. var
         self.tgt_fsm_list = []
         self.tgt_auto_list = []
@@ -386,6 +389,8 @@ class CalRefineGui(FsmGui):
         self.tgt_pos_add_QPushButton.clicked.connect(self.tgt_pos_add_QPushButton_clicked)
         self.add_default_tgt_QPushButton.clicked.connect(self.add_default_tgt_QPushButton_clicked)
         self.reset_tgt_fsm_list_QPushButton.clicked.connect(self.reset_tgt_fsm_list_QPushButton_clicked)
+        # Shortcuts
+        self.pump_QShortcut.activated.connect(self.pump_QShortcut_activated)
     #%% SLOTS
     @pyqtSlot()
     def toolbar_run_QAction_triggered(self):
@@ -696,6 +701,15 @@ class CalRefineGui(FsmGui):
     def sidepanel_pump_2_clicked(self):
         msg = ('pump_2', 0)
         self.fsm_to_plot_priority_socket.send_pyobj(msg)
+        
+    @pyqtSlot()
+    def pump_QShortcut_activated(self):
+        if self.sidepanel_pump_shortcut_1_QRadioButton.isChecked():
+            self.sidepanel_pump_1.animateClick()
+            self.sidepanel_pump_1_clicked()
+        elif self.sidepanel_pump_shortcut_2_QRadioButton.isChecked():
+            self.sidepanel_pump_2.animateClick()
+            self.sidepanel_pump_2_clicked()
     #%% GUI
     def init_gui(self):
         # Disable pumps
@@ -710,6 +724,15 @@ class CalRefineGui(FsmGui):
         self.sidepanel_pump_QVBoxLayout.addWidget(self.sidepanel_pump_1)
         self.sidepanel_pump_2 = QPushButton('2')
         self.sidepanel_pump_QVBoxLayout.addWidget(self.sidepanel_pump_2)
+        self.sidepanel_pump_shortcut_QHBoxLayout = QHBoxLayout()
+        self.sidepanel_pump_QVBoxLayout.addLayout(self.sidepanel_pump_shortcut_QHBoxLayout)
+        self.sidepanel_pump_shortcut_QLabel = QLabel('Shortcut (<b>P</b>): ')
+        self.sidepanel_pump_shortcut_QHBoxLayout.addWidget(self.sidepanel_pump_shortcut_QLabel)
+        self.sidepanel_pump_shortcut_1_QRadioButton = QRadioButton('1')
+        self.sidepanel_pump_shortcut_QHBoxLayout.addWidget(self.sidepanel_pump_shortcut_1_QRadioButton)
+        self.sidepanel_pump_shortcut_1_QRadioButton.setChecked(True)
+        self.sidepanel_pump_shortcut_2_QRadioButton = QRadioButton('2')
+        self.sidepanel_pump_shortcut_QHBoxLayout.addWidget(self.sidepanel_pump_shortcut_2_QRadioButton)
         # Customize plots
         self.plot_1_eye = self.plot_1_PlotWidget.\
             plot(np.zeros((0)), np.zeros((0)), pen = None,\

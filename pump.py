@@ -261,7 +261,8 @@ class PumpWidget(QWidget):
                 return 1
         
         except:
-                self.log_QPlainTextEdit.appendPlainText('Serial comm. error; check port address.')
+            self.log_QPlainTextEdit.appendPlainText('Serial comm. error; check port address.')
+            return 1
         
     
     def clean_exit(self):

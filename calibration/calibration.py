@@ -4,7 +4,7 @@ Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
 """
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxLayout, QDoubleSpinBox, QCheckBox, QPlainTextEdit,\
-                            QDialog, QShortcut, QGridLayout, QWidget, QVBoxLayout
+                            QDialog, QShortcut, QGridLayout, QWidget, QVBoxLayout, QRadioButton
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
 from PyQt5.QtGui import QKeySequence
 from psychopy import monitors, visual, core
@@ -231,6 +231,7 @@ class CalGui(FsmGui):
         self.tgt_num_QComboBox_down_QShortcut = QShortcut(Qt.Key_Down,self)
         self.tgt_QCheckBox_QShortcut = QShortcut(Qt.Key_Space,self)
         QShortcut(QKeySequence('Ctrl+D'), self.delete_selected_QPushButton, self.delete_selected_QPushButton.animateClick)
+        self.pump_QShortcut = QShortcut(Qt.Key_P, self)
         
         # Init. var
         self.data_dict = {}
@@ -314,6 +315,7 @@ class CalGui(FsmGui):
         self.tgt_num_QComboBox_up_QShortcut.activated.connect(self.tgt_num_QComboBox_up_QShortcut_activated)
         self.tgt_num_QComboBox_down_QShortcut.activated.connect(self.tgt_num_QComboBox_down_QShortcut_activated) # down arrow
         self.tgt_QCheckBox_QShortcut.activated.connect(self.tgt_QCheckBox_QShortcut_activated) # space bar 
+        self.pump_QShortcut.activated.connect(self.pump_QShortcut_activated)
     #%% SLOTS
     @pyqtSlot()
     def toolbar_run_QAction_triggered(self):
@@ -736,6 +738,15 @@ class CalGui(FsmGui):
     def sidepanel_pump_2_clicked(self):
         msg = ('pump_2', 0)
         self.fsm_to_plot_priority_socket.send_pyobj(msg)
+        
+    @pyqtSlot()
+    def pump_QShortcut_activated(self):
+        if self.sidepanel_pump_shortcut_1_QRadioButton.isChecked():
+            self.sidepanel_pump_1.animateClick()
+            self.sidepanel_pump_1_clicked()
+        elif self.sidepanel_pump_shortcut_2_QRadioButton.isChecked():
+            self.sidepanel_pump_2.animateClick()
+            self.sidepanel_pump_2_clicked()
     #%% GUI
     def init_gui(self):
         # Disable pumps
@@ -750,6 +761,15 @@ class CalGui(FsmGui):
         self.sidepanel_pump_QVBoxLayout.addWidget(self.sidepanel_pump_1)
         self.sidepanel_pump_2 = QPushButton('2')
         self.sidepanel_pump_QVBoxLayout.addWidget(self.sidepanel_pump_2)
+        self.sidepanel_pump_shortcut_QHBoxLayout = QHBoxLayout()
+        self.sidepanel_pump_QVBoxLayout.addLayout(self.sidepanel_pump_shortcut_QHBoxLayout)
+        self.sidepanel_pump_shortcut_QLabel = QLabel('Shortcut (<b>P</b>): ')
+        self.sidepanel_pump_shortcut_QHBoxLayout.addWidget(self.sidepanel_pump_shortcut_QLabel)
+        self.sidepanel_pump_shortcut_1_QRadioButton = QRadioButton('1')
+        self.sidepanel_pump_shortcut_QHBoxLayout.addWidget(self.sidepanel_pump_shortcut_1_QRadioButton)
+        self.sidepanel_pump_shortcut_1_QRadioButton.setChecked(True)
+        self.sidepanel_pump_shortcut_2_QRadioButton = QRadioButton('2')
+        self.sidepanel_pump_shortcut_QHBoxLayout.addWidget(self.sidepanel_pump_shortcut_2_QRadioButton)
         # Customize plots
         self.plot_1_PlotWidget.setLabel('left', "Vertical position", units = 'device raw')
         self.plot_1_PlotWidget.setLabel('bottom', "Horizontal position", units = 'device raw')
