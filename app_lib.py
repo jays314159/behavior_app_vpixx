@@ -104,6 +104,12 @@ def load_parameter(folder_name,file_name,multi_instance,multi_monkey,default_par
                     json.dump(parameter, file, indent=4)
     return parameter, parameter_file_path    
 
+def set_default_sys_parameter():
+    sys_parameter = {
+                    'data_path': os.getcwd() # parent path to save ephys and behavior data folder
+                    }
+    return sys_parameter
+
 def set_default_cal_parameter():
     parameter = {
                  'start_x': 0,
