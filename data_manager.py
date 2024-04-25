@@ -76,6 +76,7 @@ class DataManager(QRunnable):
         data_file = h5py.File(self.data_file_path+'.hdf5','a',libver='latest')
         for key,value in exp_parameter.items():
             data_file.attrs[key] = value
+        data_file.attrs['computer'] = os.getlogin()
         data_file.close() 
         self.signals.to_main_thread.emit(('log','Saving data to "' + data_file_name+'.hdf5"'))
         

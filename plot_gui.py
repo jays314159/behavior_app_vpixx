@@ -11,7 +11,7 @@ from data_manager import DataManager
 import app_lib as lib
 
 
-import sys, zmq, math, os, json, pathlib, shutil
+import sys, zmq, math, os, json, pathlib, shutil, ctypes
 import numpy as np
 class PlotGui(FsmGui):
     def __init__(self,x):
@@ -298,7 +298,9 @@ class PlotGui(FsmGui):
     
 if __name__ == '__main__':
     if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'_') # explicitly setting id to have a different icon in the task bar
         app = QApplication(sys.argv)
+        app.setWindowIcon(QtGui.QIcon(os.path.join('.', 'icon', 'experiment_window.png')))
         app_gui = PlotGui(0)
         app_gui.show()
         sys.exit(app.exec())
