@@ -4,7 +4,7 @@ Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
 """
 from PyQt5 import QtGui, QtCore
 from PyQt5.QtWidgets import QMainWindow, QVBoxLayout, QSplitter, QWidget, QTabWidget, QToolBar, QAction,\
-                            QShortcut, QPlainTextEdit          
+                            QShortcut, QPlainTextEdit
 from PyQt5.QtCore import Qt, QThreadPool,QTimer
 from PyQt5.QtGui import QKeySequence
 
@@ -23,12 +23,12 @@ from collections import deque
 import pyqtgraph as pg
 
 class FsmGui(QMainWindow):
-    def __init__(self, stop_fsm_process_Event):        
+    def __init__(self, stop_fsm_process_Event):
         super(FsmGui,self).__init__(parent=None)
-        self.thread_pool = QThreadPool()  
+        self.thread_pool = QThreadPool()
         self.data_QTimer = QTimer() # timer to periodically get data from FSM process
         self.receiver_QTimer = QTimer() # timer to periodically get data from diff. PC
-        
+
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.main_QWidget = QWidget()
         self.setCentralWidget(self.main_QWidget)
@@ -40,12 +40,12 @@ class FsmGui(QMainWindow):
         self.main_vert_QSplitter = QSplitter(Qt.Vertical)
         self.main_horz_QSplitter.addWidget(self.main_vert_QSplitter)
         self.main_vert_QSplitter.setChildrenCollapsible(False)
-        
+
         #%% TOOLBAR
         self.toolbar = QToolBar()
         self.toolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.toolbar.setIconSize(QtCore.QSize(25,25))
-        self.addToolBar(self.toolbar)  
+        self.addToolBar(self.toolbar)
         self.toolbar_connect_QAction = QAction(QtGui.QIcon(os.path.join('.', 'icon', 'connect.png')),'')
         self.toolbar_connect_QAction.setToolTip('Start to receive data from another computer')
         self.toolbar.addAction(self.toolbar_connect_QAction)
@@ -60,7 +60,7 @@ class FsmGui(QMainWindow):
         self.toolbar_stop_QAction.setToolTip("Stop (<b>CTRL+S</b>)")
         self.toolbar_stop_QAction.setShortcut(QKeySequence('Ctrl+S'))
         self.toolbar.addAction(self.toolbar_stop_QAction)
-        #%% PLOTS    
+        #%% PLOTS
         self.plot_1_PlotWidget = pg.PlotWidget() # Scatter plot
         self.main_vert_QSplitter.addWidget(self.plot_1_PlotWidget)
         self.plot_1_PlotWidget.setBackground('w')
@@ -76,9 +76,9 @@ class FsmGui(QMainWindow):
         self.plot_1_PlotWidget_ViewBox = self.plot_1_PlotWidget.getViewBox()
         self.plot_1_PlotWidget_ViewBox.setRange(xRange=(0,20),yRange=(0,20))
         self.plot_1_PlotWidget_PlotItem = self.plot_1_PlotWidget.getPlotItem()
-        self.plot_1_PlotWidget_PlotItem.addLegend(offset=(-20,5))      
-                
-        self.plot_2_PlotWidget = pg.PlotWidget() # Position vs. time plot 
+        self.plot_1_PlotWidget_PlotItem.addLegend(offset=(-20,5))
+
+        self.plot_2_PlotWidget = pg.PlotWidget() # Position vs. time plot
         self.main_vert_QSplitter.addWidget(self.plot_2_PlotWidget)
         self.plot_2_PlotWidget.setBackground('w')
         font = QtGui.QFont()
@@ -92,20 +92,20 @@ class FsmGui(QMainWindow):
         self.plot_2_PlotWidget.getAxis('bottom').setStyle(tickFont = font)
         self.plot_2_PlotWidget_ViewBox = self.plot_2_PlotWidget.getViewBox()
         self.plot_2_PlotWidget_ViewBox.setRange(xRange=(0,20),yRange=(0,20))
-        self.plot_2_PlotWidget_ViewBox.enableAutoRange(self.plot_2_PlotWidget_ViewBox.XAxis)   
+        self.plot_2_PlotWidget_ViewBox.enableAutoRange(self.plot_2_PlotWidget_ViewBox.XAxis)
         self.plot_2_PlotWidget_PlotItem = self.plot_2_PlotWidget.getPlotItem()
         self.plot_2_PlotWidget_PlotItem.addLegend(offset=(-20,5))
-        
+
         self.plot_2_tgt_x = self.plot_2_PlotWidget.\
             plot(np.zeros((0)), np.zeros((0)), pen = pg.mkPen(color=(245,130,48), width=2.5,style=QtCore.Qt.DashLine),name='tgt x',connect='finite')
         self.plot_2_tgt_y = self.plot_2_PlotWidget.\
             plot(np.zeros((0)), np.zeros((0)), pen = pg.mkPen(color=(210,245,60), width=2.5,style=QtCore.Qt.DashLine),name='tgt y',connect='finite')
         self.plot_2_eye_x = self.plot_2_PlotWidget.\
-            plot(np.zeros((0)), np.zeros((0)), pen = pg.mkPen(color=(230,25,75), width=2.5),name='eye x',connect='finite') # plotdataitem     
+            plot(np.zeros((0)), np.zeros((0)), pen = pg.mkPen(color=(230,25,75), width=2.5),name='eye x',connect='finite') # plotdataitem
         self.plot_2_eye_y = self.plot_2_PlotWidget.\
             plot(np.zeros((0)), np.zeros((0)), pen = pg.mkPen(color=(60,180,75), width=2.5),name='eye y',connect='finite') # plotdataitem
-        
-        
+
+
         # Housekeeping var. to plot eye data
         self.data_rate = int(1/60*1000) # how often to get eye and time data from fsm (ms)
         # self.data_rate = 1
@@ -114,7 +114,7 @@ class FsmGui(QMainWindow):
         self.eye_x_data = deque(maxlen=data_length)
         self.eye_y_data = deque(maxlen=data_length)
         self.tgt_x_data = deque(maxlen=data_length)
-        self.tgt_y_data = deque(maxlen=data_length)   
+        self.tgt_y_data = deque(maxlen=data_length)
         self.t_data = deque(maxlen=data_length)
         #%% LOG
         self.log_QPlainTextEdit = QPlainTextEdit()
@@ -127,7 +127,7 @@ class FsmGui(QMainWindow):
         self.sidepanel_QWidget.setLayout(self.sidepanel_QVBoxLayout)
         self.sidepanel_parameter_QWidget = QWidget()
         self.sidepanel_QVBoxLayout.addWidget(self.sidepanel_parameter_QWidget)
-        self.sidepanel_custom_QVBoxLayout = QVBoxLayout() # place to add custom parameters/widgets      
+        self.sidepanel_custom_QVBoxLayout = QVBoxLayout() # place to add custom parameters/widgets
         self.sidepanel_parameter_QWidget.setLayout(self.sidepanel_custom_QVBoxLayout)
         self.sidepanel_QVBoxLayout.addStretch(1)
         #%% WIDGETS
@@ -148,16 +148,17 @@ class FsmGui(QMainWindow):
         self.sidepanel_QTabWidget.addTab(self.pd_tgt,'PD Target')
 
     def closeEvent(self,event):
-        self.stop_fsm_process_Event.set()
-        time.sleep(0.5)
+        time.sleep(0.1)
+        try:
+            self.stop_fsm_process_Event.set()
+        except:
+            pass
         try:
             self.pump_1.clean_exit()
             self.pump_2.clean_exit()
         except:
             pass
         try:
-            pg.exit() # this should come at the end 
+            pg.exit() # this should come at the end
         except:
             pass
-        
-        

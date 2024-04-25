@@ -14,23 +14,23 @@ def playSound(freq, duration):
     plays the beep. Use only for imprecise sound timing
     Arguments:
     freq - frequency in Hz (int)
-    duration - duration of beep in s (float). 
+    duration - duration of beep in s (float).
     '''
     fs = 44100  # 44100 samples per second
     # Generate array with duration*sample_rate steps, ranging between 0 and duration
     t = np.linspace(0, duration, int(duration * fs), False)
-    
+
     # Generate a sine wave
     note = np.sin(freq * t * 2 * np.pi)
-    
+
     # Ensure that highest value is in 16-bit range
     audio = note * (2**15 - 1) / np.max(np.abs(note))
     # Convert to 16-bit data
     audio = audio.astype(np.int16)
-    
+
     # Start playback
     simpleaudio.play_buffer(audio, 1, 2, fs)
-    
+
     return 0
 
 def load_parameter(folder_name,file_name,multi_instance,multi_monkey,default_parameter_fnc, instance_name=None,monkey_name=None):
@@ -41,9 +41,9 @@ def load_parameter(folder_name,file_name,multi_instance,multi_monkey,default_par
         file_name - name of the file containing parameter (str)
         multi_instance - specifies if there are different instances of parameters
                          in a single file (boolean)
-        multi_monkey - specifies if there are different parameters for different monkey (boolean) 
-        default_parameter_fnc - function/method that returns default parameters 
-                                if no saved parameters found                 
+        multi_monkey - specifies if there are different parameters for different monkey (boolean)
+        default_parameter_fnc - function/method that returns default parameters
+                                if no saved parameters found
         instance_name - specifies instance name if 'multi_instance' is true (optional, str)
         monkey_name - specifies monkey name if 'multi_monkey' is true (optional, str)
     Returns:
@@ -69,13 +69,10 @@ def load_parameter(folder_name,file_name,multi_instance,multi_monkey,default_par
                         json.dump(all_parameter,file,indent=4)
                     # If specific instance of parameters not exist
                 else:
-                    if monkey_name in all_parameter:
-                        parameter = all_parameter[monkey_name]
-                    else:
-                        parameter = default_parameter_fnc(instance_name)
-                        all_parameter[monkey_name] = parameter
-                        file.seek(0)
-                        json.dump(all_parameter,file,indent=4)
+                    parameter = default_parameter_fnc()
+                    all_parameter[instance_name] = parameter
+                    file.seek(0)
+                    json.dump(all_parameter,file,indent=4)
             else:
                 if multi_instance == True:
                     all_parameter = json.load(file)
@@ -102,7 +99,7 @@ def load_parameter(folder_name,file_name,multi_instance,multi_monkey,default_par
                     json.dump({instance_name: parameter}, file, indent=4)
                 else:
                     json.dump(parameter, file, indent=4)
-    return parameter, parameter_file_path    
+    return parameter, parameter_file_path
 
 def set_default_sys_parameter():
     sys_parameter = {
@@ -138,7 +135,7 @@ def set_default_cal_parameter():
                  }
 
     return parameter
-    
+
 def set_default_tgt_parameter():
     parameter = {
                 'size': 0.5,
@@ -192,7 +189,7 @@ def VPixx_turn_off_schedule():
 
 def VPixx_get_pointers_for_data():
     '''
-    need 'ctypes' pointers to pass into 'TPxBestPolyGetEyePosition' 
+    need 'ctypes' pointers to pass into 'TPxBestPolyGetEyePosition'
     to get eye data. See examples use.
     Returns:
         cal_data - dummy var., as we don't use VPixx device calibration
@@ -221,12 +218,12 @@ def make_prim_target(parameter):
     num_prim_sac_dir = parameter['num_prim_sac_dir']
     prim_sac_amp = parameter['prim_sac_amp']
     first_dir = parameter['first_prim_sac_dir']
-    
+
     for prim_tgt_idx in range(num_prim_sac_dir):
         prim_tgt_dir = 2*math.pi/num_prim_sac_dir*prim_tgt_idx + first_dir*math.pi/180
         prim_tgt_x = prim_sac_amp*math.cos(prim_tgt_dir)
         prim_tgt_y = prim_sac_amp*math.sin(prim_tgt_dir)
-        
+
         tgt_list.append({'prim_tgt_pos': [prim_tgt_x, prim_tgt_y]})
     return tgt_list
 
@@ -237,7 +234,7 @@ def make_corr_target(parameter):
     Returns:
     tgt_list - a list of target positions uniformly distributed around a circle according to a
                   number of targets and their amplitude
-             - each element is a dictionary with all parameters needed for a set of 
+             - each element is a dictionary with all parameters needed for a set of
                primary and secondary targets
     '''
     tgt_list = []
@@ -247,7 +244,7 @@ def make_corr_target(parameter):
     num_corr_sac_dir = parameter['num_corr_sac_dir']
     corr_sac_amp = parameter['corr_sac_amp']
     first_corr_sac_dir = parameter['first_corr_sac_dir']
-    
+
     for prim_tgt_idx in range(num_prim_sac_dir):
         prim_tgt_dir = 2*math.pi/num_prim_sac_dir*prim_tgt_idx + first_prim_sac_dir*math.pi/180
         prim_tgt_x = prim_sac_amp*math.cos(prim_tgt_dir)
@@ -258,7 +255,7 @@ def make_corr_target(parameter):
             corr_tgt_y = corr_sac_amp*math.sin(corr_tgt_dir) + prim_tgt_y
             tgt_list.append({'prim_tgt_pos': [prim_tgt_x, prim_tgt_y],
                              'corr_tgt_pos': [corr_tgt_x, corr_tgt_y]})
-    
+
     return tgt_list
 
 def raw_to_deg(raw_data, cal_matrix):
@@ -266,13 +263,12 @@ def raw_to_deg(raw_data, cal_matrix):
     converts raw VPixx data into screen values in degrees
     Arguments:
         raw_data - [raw x, raw y, 1]
-        cal_matrix - [[c1,c2,0],[c3,c4,0],[c5,c6,1]] 
+        cal_matrix - [[c1,c2,0],[c3,c4,0],[c5,c6,1]]
                      where c5 is x bias and c6 is y bias
     Returns:
         deg_data[0:2] - x and y in degrees (list) where
                         x is c1*x_raw + c3*y_raw + c5 and
-                        y is c2*x_raw + c4*y_raw + c6 
+                        y is c2*x_raw + c4*y_raw + c6
     '''
-    deg_data = np.array(raw_data) @ cal_matrix 
+    deg_data = np.array(raw_data) @ cal_matrix
     return deg_data[0:2]
-

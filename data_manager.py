@@ -11,7 +11,7 @@ import os
 from datetime import date, datetime
 from pathlib import Path
 import numpy as np
-import h5py
+from scipy.io import savemat
 
 class DataManagerSignals(QObject):
     to_main_thread = pyqtSignal(object)
@@ -20,12 +20,12 @@ class DataManager(QRunnable):
     def __init__(self):
         super().__init__()
         self.signals = DataManagerSignals()
-        
+
         self.data_dir = Path(__file__).parent.resolve()
         self.data_file_path = []
         self.trial_num = 0
         self.trial_data = {} # dictionary of 2000 Hz data
-        
+
         self.setAutoDelete(False)
     @pyqtSlot()
     def run(self):
@@ -34,11 +34,11 @@ class DataManager(QRunnable):
         '''
 
         data_file = h5py.File(self.data_file_path +'.hdf5','a',libver='latest')
-        trial_grp = data_file.create_group("trial_"+str(self.trial_num))       
+        trial_grp = data_file.create_group("trial_"+str(self.trial_num))
         for key,value in self.trial_data.items():
             trial_grp.create_dataset(key,data=self.trial_data[key])
-        data_file.close() 
-          
+        data_file.close()
+
     def save_data(self):
         '''
         save data to a specified HDF5 file
@@ -56,11 +56,11 @@ class DataManager(QRunnable):
         except:
             pass
         finally:
-            trial_grp = data_file.create_group(group_name)       
+            trial_grp = data_file.create_group(group_name)
             for key,value in self.trial_data.items():
                 trial_grp.create_dataset(key,data=self.trial_data[key])
-            data_file.close() 
-    
+            data_file.close()
+
     def init_data(self, exp_name, exp_parameter):
         '''
         initialize data file for the session and exp. parameters
@@ -75,6 +75,23 @@ class DataManager(QRunnable):
         data_file = h5py.File(self.data_file_path+'.hdf5','a',libver='latest')
         for key,value in exp_parameter.items():
             data_file.attrs[key] = value
-        data_file.close() 
+        data_file.attrs['computer'] = os.getlogin()
+        data_file.close()
         self.signals.to_main_thread.emit(('log','Saving data to "' + data_file_name+'.hdf5"'))
-        
+
+    def convert_data(self):
+        '''
+        convert data from HDF5 to .mat format
+        '''
+        data_file = h5py.File(self.data_file_path +'.hdf5','a',libver='latest')
+        # Init. data var. to save
+        data_dict = {}
+        # Read attributes (exp. parameters)
+        for key,value in data_file.attrs.items():
+            data_dict[key] = value
+        # Read data
+        for trial_key,_ in data_file.items():
+            data_dict[trial_key] = {}
+            for data_key, data_value in data_file[trial_key].items():
+                data_dict[trial_key][data_key] = data_value[:]
+        savemat(self.data_file_path + '.mat',{'data':data_dict})
