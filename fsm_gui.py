@@ -148,11 +148,9 @@ class FsmGui(QMainWindow):
         self.sidepanel_QTabWidget.addTab(self.pd_tgt,'PD Target')
 
     def closeEvent(self,event):
-        time.sleep(0.1)
-        try:
+        if not isinstance(self.stop_fsm_process_Event,int):
             self.stop_fsm_process_Event.set()
-        except:
-            pass
+        time.sleep(0.1)
         try:
             self.pump_1.clean_exit()
             self.pump_2.clean_exit()

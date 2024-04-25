@@ -46,7 +46,7 @@ class PlotGui(FsmGui):
         self.toolbar.addWidget(self.data_path_QPushButton)
         self.data_path_QFileDialog = QFileDialog()
         self.data_path_QFileDialog.setFileMode(QFileDialog.FileMode.DirectoryOnly)
-        sys_parameter, _ = lib.load_parameter('','sys_parameter.json', False, lib.set_default_sys_parameter)# load system parameter
+        sys_parameter, _ = lib.load_parameter('','sys_parameter.json', False, False, lib.set_default_sys_parameter)# load system parameter
         self.data_path_QLineEdit.setText(sys_parameter['data_path'])
         self.data_path_QFileDialog.setDirectory(self.data_path_QLineEdit.text())
 

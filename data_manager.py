@@ -11,6 +11,7 @@ import os
 from datetime import date, datetime
 from pathlib import Path
 import numpy as np
+import h5py
 from scipy.io import savemat
 
 class DataManagerSignals(QObject):
