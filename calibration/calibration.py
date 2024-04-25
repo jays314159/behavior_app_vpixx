@@ -500,7 +500,7 @@ class CalGui(FsmGui):
             t = self.real_time_data_Array[1]
             eye_raw_x = self.real_time_data_Array[2]
             eye_raw_y = self.real_time_data_Array[3]
-        if not math.isnan(t):
+        if not math.isnan(t) and not (tgt_num ==0):
             self.data_dict['eye_raw_x_tgt_'+str(tgt_num)].append(eye_raw_x)
             self.data_dict['eye_raw_y_tgt_'+str(tgt_num)].append(eye_raw_y)
             self.data_dict['t_abs_tgt_'+str(tgt_num)].append(t)

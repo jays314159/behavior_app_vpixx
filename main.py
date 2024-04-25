@@ -250,7 +250,7 @@ class MainGui(QMainWindow):
         fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False) 
         gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
         
-        real_time_data_Array = multiprocessing.Array('d', range(5))
+        real_time_data_Array = multiprocessing.Array('d', range(7))
         exp_name = 'simple_saccade'
         fsm_process = SimpleSacFsmProcess(exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter, self.mon_parameter)
         gui_process = SimpleSacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
@@ -280,7 +280,7 @@ class MainGui(QMainWindow):
         fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False)
         gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
         
-        real_time_data_Array = multiprocessing.Array('d', range(5))
+        real_time_data_Array = multiprocessing.Array('d', range(7))
         exp_name = 'random_corrective_saccades'
         fsm_process = CorrSacFsmProcess(exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter, self.mon_parameter)
         gui_process = CorrSacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)

@@ -12,7 +12,7 @@ from psychopy import monitors, visual, core
 from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxSelectDevice,DPxUpdateRegCache, DPxSetTPxAwake,\
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetDoutValue, TPxReadTPxData,\
-                              DPxSetTPxSleep, DPxClose
+                              DPxSetTPxSleep, DPxClose, DPxGetDinValue, DPxGetDoutValue
 
 from fsm_gui import FsmGui
 from target import TargetWidget
@@ -152,7 +152,11 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                     DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
                     # Get time       
                     self.t = TPxBestPolyGetEyePosition(cal_data, raw_data) # this calls 'DPxUpdateRegCache' as well
-
+                    
+                    # Digital input/output
+                    din = DPxGetDinValue()
+                    dout = DPxGetDoutValue()
+                    
                     # Get eye status (blinking)
                     eye_status = DPxGetReg16(0x59A)
                     right_eye_blink = bool(eye_status & (1 << 0)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
@@ -497,6 +501,8 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                         self.real_time_data_Array[2] = self.eye_y
                         self.real_time_data_Array[3] = self.tgt_x
                         self.real_time_data_Array[4] = self.tgt_y
+                        self.real_time_data_Array[5] = din
+                        self.real_time_data_Array[6] = dout
 
         # Close PsychoPy
         core.quit()
@@ -763,8 +769,10 @@ class SimpleSacGui(FsmGui):
             eye_x = self.real_time_data_Array[1]
             eye_y = self.real_time_data_Array[2]
             tgt_x = self.real_time_data_Array[3]
-            tgt_y = self.real_time_data_Array[4]        
-        self.fsm_to_plot_socket.send_pyobj((t,eye_x,eye_y,tgt_x,tgt_y))
+            tgt_y = self.real_time_data_Array[4]    
+            din = self.real_time_data_Array[5]    
+            dout = self.real_time_data_Array[6]    
+        self.fsm_to_plot_socket.send_pyobj((t,eye_x,eye_y,tgt_x,tgt_y,din,dout))
     
     @pyqtSlot()
     def receiver_QTimer_timeout(self):
