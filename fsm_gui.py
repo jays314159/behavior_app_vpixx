@@ -110,12 +110,12 @@ class FsmGui(QMainWindow):
         self.data_rate = int(1/60*1000) # how often to get eye and time data from fsm (ms)
         # self.data_rate = 1
         data_duration = 5 # how long to store eye and time data (s)
-        data_length = int(data_duration*1000/int(1/60*1000))
-        self.eye_x_data = deque(maxlen=data_length)
-        self.eye_y_data = deque(maxlen=data_length)
-        self.tgt_x_data = deque(maxlen=data_length)
-        self.tgt_y_data = deque(maxlen=data_length)
-        self.t_data = deque(maxlen=data_length)
+        self.data_length = int(data_duration*1000/int(1/60*1000))
+        self.eye_x_data = deque(maxlen=self.data_length)
+        self.eye_y_data = deque(maxlen=self.data_length)
+        self.tgt_x_data = deque(maxlen=self.data_length)
+        self.tgt_y_data = deque(maxlen=self.data_length)
+        self.t_data = deque(maxlen=self.data_length)
         #%% LOG
         self.log_QPlainTextEdit = QPlainTextEdit()
         self.log_QPlainTextEdit.setReadOnly(True)

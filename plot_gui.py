@@ -3,8 +3,11 @@ Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
 @author: Jay Pi <jay.s.314159@gmail.com>
 """
 from PyQt5 import QtCore, QtWidgets, QtGui
-from PyQt5.QtWidgets import QApplication, QLabel, QCheckBox, QWidget, QFileDialog, QPushButton, QLineEdit, QAction
-from PyQt5.QtCore import pyqtSlot
+from PyQt5.QtWidgets import QApplication, QLabel, QCheckBox, QWidget, QFileDialog, QPushButton, QLineEdit, QAction,\
+                            QHBoxLayout, QDoubleSpinBox, QComboBox
+from PyQt5.QtCore import Qt, pyqtSlot
+from PyQt5.QtGui import QColor
+import pyqtgraph as pg
 
 from fsm_gui import FsmGui
 from data_manager import DataManager
@@ -13,6 +16,8 @@ import app_lib as lib
 
 import sys, zmq, math, os, json, pathlib, shutil, ctypes
 import numpy as np
+from collections import deque
+
 class PlotGui(FsmGui):
     def __init__(self,x):
         super(PlotGui,self).__init__(x)
@@ -99,7 +104,60 @@ class PlotGui(FsmGui):
             plot(np.zeros((0)), np.zeros((0)), pen = None,\
             symbolBrush='k', symbolPen='k', symbol='o',symbolSize=10,name='eye',connect='finite')
 
-
+        # Digital input/out channels
+        self.dio_title_QLabel = QLabel('<b>Digital input/output display</b> (low, high)')
+        self.dio_title_QLabel.setAlignment(Qt.AlignCenter)
+        self.sidepanel_custom_QVBoxLayout.addWidget(self.dio_title_QLabel)
+        self.num_dio_ch = 8
+        self.din_data_dict = {}
+        self.dout_data_dict = {}
+        self.dio_plot_dict = {}
+        self.dio_QLabel_dict = {}
+        self.dio_QCheckBox_dict = {}
+        self.dio_low_QDoubleSpinBox_dict = {}
+        self.dio_high_QDoubleSpinBox_dict = {}
+        self.dio_color_QComboBox_dict = {}
+        self.dio_choice_QComboBox_dict = {}
+        self.dio_QHBoxLayout = {}
+        for ch_idx in range(self.num_dio_ch):
+            self.dio_QHBoxLayout['ch_' + str(ch_idx)] = QHBoxLayout()
+            self.sidepanel_custom_QVBoxLayout.addLayout(self.dio_QHBoxLayout['ch_' + str(ch_idx)])
+            self.din_data_dict['ch_' + str(ch_idx)] = deque(maxlen=self.data_length)   
+            self.dout_data_dict['ch_' + str(ch_idx)] = deque(maxlen=self.data_length)   
+            self.dio_QLabel_dict['ch_' + str(ch_idx)] = QLabel('Ch. ' + str(ch_idx) + '.')
+            self.dio_QCheckBox_dict['ch_' + str(ch_idx)] = QCheckBox()
+            self.dio_low_QDoubleSpinBox_dict['ch_' + str(ch_idx)] = QDoubleSpinBox()
+            self.dio_low_QDoubleSpinBox_dict['ch_' + str(ch_idx)].setDecimals(1)
+            self.dio_low_QDoubleSpinBox_dict['ch_' + str(ch_idx)].setValue(0)
+            self.dio_high_QDoubleSpinBox_dict['ch_' + str(ch_idx)] = QDoubleSpinBox()
+            self.dio_high_QDoubleSpinBox_dict['ch_' + str(ch_idx)].setDecimals(1)
+            self.dio_high_QDoubleSpinBox_dict['ch_' + str(ch_idx)].setValue(1+ch_idx/10)
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)] = QComboBox()
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].addItem('black')
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].setItemData(0,QColor(Qt.black),Qt.BackgroundRole)
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].addItem('cyan')
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].setItemData(1,QColor(Qt.cyan),Qt.BackgroundRole)
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].addItem('blue')
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].setItemData(2,QColor(Qt.blue),Qt.BackgroundRole)
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].addItem('red')
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].setItemData(3,QColor(Qt.darkRed),Qt.BackgroundRole)
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].addItem('magenta')
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].setItemData(4,QColor(Qt.magenta),Qt.BackgroundRole)
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].addItem('yellow')
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].setItemData(5,QColor(Qt.yellow),Qt.BackgroundRole)
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].addItem('green')
+            self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].setItemData(6,QColor(Qt.green),Qt.BackgroundRole)
+            self.dio_choice_QComboBox_dict['ch_' + str(ch_idx)] = QComboBox()
+            self.dio_choice_QComboBox_dict['ch_' + str(ch_idx)].addItem('input')
+            self.dio_choice_QComboBox_dict['ch_' + str(ch_idx)].addItem('output')
+            self.dio_QHBoxLayout['ch_' + str(ch_idx)].addWidget(self.dio_QLabel_dict['ch_' + str(ch_idx)])
+            self.dio_QHBoxLayout['ch_' + str(ch_idx)].addWidget(self.dio_QCheckBox_dict['ch_' + str(ch_idx)])
+            self.dio_QHBoxLayout['ch_' + str(ch_idx)].addWidget(self.dio_choice_QComboBox_dict['ch_' + str(ch_idx)])
+            self.dio_QHBoxLayout['ch_' + str(ch_idx)].addWidget(self.dio_low_QDoubleSpinBox_dict['ch_' + str(ch_idx)])
+            self.dio_QHBoxLayout['ch_' + str(ch_idx)].addWidget(self.dio_high_QDoubleSpinBox_dict['ch_' + str(ch_idx)])
+            self.dio_QHBoxLayout['ch_' + str(ch_idx)].addWidget(self.dio_color_QComboBox_dict['ch_' + str(ch_idx)])
+            self.dio_plot_dict['ch_' + str(ch_idx)] = self.plot_2_PlotWidget.\
+                plot(np.zeros((0)), np.zeros((0)), pen = pg.mkPen(color='w', width=2.5),connect='finite')
 
     @pyqtSlot()
     def toolbar_run_QAction_triggered(self):
@@ -128,6 +186,9 @@ class PlotGui(FsmGui):
                 self.tgt_x_data.clear()
                 self.tgt_y_data.clear()
                 self.t_data.clear()
+                for ch_idx in range(self.num_dio_ch):
+                    self.din_data_dict['ch_' + str(ch_idx)].clear()
+                    self.dout_data_dict['ch_' + str(ch_idx)].clear()
         else:
             self.log_QPlainTextEdit.appendPlainText('No connection with FSM computer.')
         # Disable file path search
@@ -190,13 +251,53 @@ class PlotGui(FsmGui):
         # Non-priority channel - only data for real-time plotting
         if self.fsm_to_plot_poller.poll(0):
             msg = self.fsm_to_plot_socket.recv_pyobj(flags=zmq.NOBLOCK)
-            t,eye_x,eye_y,tgt_x,tgt_y = msg
+            t,eye_x,eye_y,tgt_x,tgt_y,din,dout = msg
             if not math.isnan(t):
                 self.eye_x_data.append(eye_x)
                 self.eye_y_data.append(eye_y)
                 self.tgt_x_data.append(tgt_x)
                 self.tgt_y_data.append(tgt_y)
                 self.t_data.append(t)
+                # Digital input/output
+                din_bin = '{0:08b}'.format(int(din))
+                dout_bin = '{0:08b}'.format(int(dout))
+                for ch_idx in range(self.num_dio_ch):
+                    low_val = self.dio_low_QDoubleSpinBox_dict['ch_' + str(ch_idx)].value()
+                    high_val = self.dio_high_QDoubleSpinBox_dict['ch_' + str(ch_idx)].value()
+                    din_ch_bin = din_bin[-ch_idx-1]
+                    dout_ch_bin = dout_bin[-ch_idx-1]
+                    if din_ch_bin == '0':
+                        self.din_data_dict['ch_' + str(ch_idx)].append(low_val)
+                    elif din_ch_bin == '1':
+                        self.din_data_dict['ch_' + str(ch_idx)].append(high_val)
+                    if dout_ch_bin == '0':
+                        self.dout_data_dict['ch_' + str(ch_idx)].append(low_val)
+                    elif dout_ch_bin == '1':
+                        self.dout_data_dict['ch_' + str(ch_idx)].append(high_val)
+                    dio_color_str = self.dio_color_QComboBox_dict['ch_' + str(ch_idx)].currentText()
+                    if dio_color_str == 'black':
+                        dio_color = 'k'
+                    elif dio_color_str == 'cyan':
+                        dio_color = 'c'
+                    elif dio_color_str == 'blue':
+                        dio_color = 'b'
+                    elif dio_color_str == 'red':
+                        dio_color= 'r'
+                    elif dio_color_str == 'magenta':
+                        dio_color = 'm'
+                    elif dio_color_str == 'yellow':
+                        dio_color = 'y'
+                    elif dio_color_str == 'green':
+                        dio_color = 'g'
+                    if self.dio_QCheckBox_dict['ch_' + str(ch_idx)].isChecked():    
+                        self.dio_plot_dict['ch_' + str(ch_idx)].setPen(pg.mkPen(color=dio_color, width=2.5))
+                        dio_choice = self.dio_choice_QComboBox_dict['ch_' + str(ch_idx)].currentText()
+                        if dio_choice == 'input':
+                            self.dio_plot_dict['ch_' + str(ch_idx)].setData(self.t_data,self.din_data_dict['ch_' + str(ch_idx)])
+                        elif dio_choice == 'output':
+                            self.dio_plot_dict['ch_' + str(ch_idx)].setData(self.t_data,self.dout_data_dict['ch_' + str(ch_idx)])
+                    else:
+                        self.dio_plot_dict['ch_' + str(ch_idx)].clear()
                 # Plot
                 self.plot_1_eye.setData([eye_x],[eye_y])
                 self.plot_1_tgt.setData([tgt_x],[tgt_y])
@@ -208,9 +309,12 @@ class PlotGui(FsmGui):
             msg = self.fsm_to_plot_priority_socket.recv_pyobj()
             msg_title = msg[0]
             if msg_title == 'tgt_data':
-                cue_x, cue_y, end_x, end_y = msg[1]
+                if len(msg[1]) == 2: # only cue tgt
+                    cue_x, cue_y = msg[1]
+                elif len(msg[1]) == 4: # cue and end tgt
+                    cue_x, cue_y, end_x, end_y = msg[1]
+                    self.plot_1_end.setData([end_x],[end_y])
                 self.plot_1_cue.setData([cue_x],[cue_y])
-                self.plot_1_end.setData([end_x],[end_y])
             if msg_title == 'trial_data':
                 self.data_manager.trial_num = msg[1]
                 self.data_manager.trial_data = msg[2]
