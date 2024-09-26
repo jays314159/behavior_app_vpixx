@@ -13,6 +13,7 @@ from calibration.calibration import CalFsmProcess, CalGuiProcess
 from calibration.refinement import CalRefineFsmProcess, CalRefineGuiProcess
 from experiment.simple_saccade import SimpleSacGuiProcess, SimpleSacFsmProcess
 from experiment.corr_saccade import CorrSacGuiProcess, CorrSacFsmProcess
+from experiment.opto_simple_saccade import OptoSimpleSacGuiProcess, OptoSimpleSacFsmProcess
 from target import TargetWidget
 import app_lib as lib
 
@@ -35,7 +36,7 @@ class MainGui(QMainWindow):
         self.menu_exp.addAction(self.simple_sac_QAction)
         self.corr_sac_QAction = QAction('Corrective Saccade', self)
         self.menu_exp.addAction(self.corr_sac_QAction)
-        self.opto_simple_sac_QAction = QAction('Opto Simple Saccade', self)
+        self.opto_simple_sac_QAction = QAction('Opto Simple Saccade',self)
         self.menu_exp.addAction(self.opto_simple_sac_QAction)
         self.cal_QAction = QAction('Calibration',self)
         self.menu_cal.addAction(self.cal_QAction)
@@ -261,37 +262,7 @@ class MainGui(QMainWindow):
         fsm_process.start()
         time.sleep(0.25) # without this artificial delay, sometimes causes error
         gui_process.start()
-            
-    def opto_simple_sac_QAction_triggered(self):
-        # Empty Linux log files; communication with tracker fills up the files, eventually crashing
-        sys_password = self.sys_password_QLineEdit.text()
-        cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
-        os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog.1'" % (sys_password))
-        if cmd_output != 0:
-            self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
-            return
         
-        self.save_parameter()
-        
-        # Create a separate process for finite state machine (FSM) to run exp. and 
-        # for GUI to control it.
-        # Using Pipe to transfer data btwn processes.
-        # Using Event to control stop and start of the experiment
-        stop_exp_Event = multiprocessing.Event()
-        stop_exp_Event.set()
-        stop_fsm_process_Event = multiprocessing.Event()
-        fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False) 
-        gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
-        
-        real_time_data_Array = multiprocessing.Array('d', range(5))
-        exp_name = 'opto_simple_saccade'
-        fsm_process = SimpleSacFsmProcess(exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter, self.mon_parameter)
-        gui_process = SimpleSacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
-        
-        fsm_process.start()
-        time.sleep(0.25) # without this artificial delay, sometimes causes error
-        gui_process.start()
-            
     def corr_sac_QAction_triggered(self):
         # Empty Linux log files; communication with tracker fills up the files, eventually crashing
         sys_password = self.sys_password_QLineEdit.text()
@@ -322,6 +293,36 @@ class MainGui(QMainWindow):
         time.sleep(0.25) # without this artificial delay, sometimes causes error
         gui_process.start()
     
+    def opto_simple_sac_QAction_triggered(self):
+        # Empty Linux log files; communication with tracker fills up the files, eventually crashing
+        sys_password = self.sys_password_QLineEdit.text()
+        cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
+        os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog.1'" % (sys_password))
+        if cmd_output != 0:
+            self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
+            return
+        
+        self.save_parameter()
+        
+        # Create a separate process for finite state machine (FSM) to run exp. and 
+        # for GUI to control it.
+        # Using Pipe to transfer data btwn processes.
+        # Using Event to control stop and start of the experiment
+        stop_exp_Event = multiprocessing.Event()
+        stop_exp_Event.set()
+        stop_fsm_process_Event = multiprocessing.Event()
+        fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False) 
+        gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
+        
+        real_time_data_Array = multiprocessing.Array('d', range(5))
+        exp_name = 'opto_simple_saccade'
+        fsm_process = OptoSimpleSacFsmProcess(exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter, self.mon_parameter)
+        gui_process = OptoSimpleSacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
+        
+        fsm_process.start()
+        time.sleep(0.25) # without this artificial delay, sometimes causes error
+        gui_process.start()
+        
     def cal_QAction_triggered(self):
         # Empty Linux log files; communication with tracker fills up the files, eventually crashing
         sys_password = self.sys_password_QLineEdit.text()

@@ -3,7 +3,7 @@ Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
 @author: Alden Shoup <alden.shoup@gmail.com>
 """
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxLayout, QDoubleSpinBox, QCheckBox, QPlainTextEdit,\
+from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QVBoxLayout, QLabel, QWidget, QTabWidget, QHBoxLayout, QDoubleSpinBox, QCheckBox, QPlainTextEdit,\
                             QDialog, QShortcut
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
 from psychopy import monitors, visual, core
@@ -89,6 +89,10 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                 # Load exp parameter
                 fsm_parameter, _ = lib.load_parameter('experiment','exp_parameter.json',True,True,self.set_default_parameter,self.exp_name, self.main_parameter['current_monkey'])
                 cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])
+                #init stim params
+                avg_reaction_time = fsm_parameter['avg_reaction_time']
+                stim_window = fsm_parameter['stim_window']
+                stim_length = fsm_parameter['stim_length']
                 # Create target list
                 target_pos_list = lib.make_prim_target(fsm_parameter)
                 num_tgt_pos = len(target_pos_list)
@@ -112,7 +116,8 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                 dout_ch_1 = 1 # nominal PD
                 dout_ch_3 = 0 # random signal
                 dout_ch_5 = 1 # LED
-                DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                dout_ch_7 = 0 # stim
+                DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                 DPxUpdateRegCache()
                 
                 run_exp = True
@@ -149,7 +154,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             dout_ch_3 = 1 
                         else:
                             dout_ch_3 = 0
-                    DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                    DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                     # Get time       
                     self.t = TPxBestPolyGetEyePosition(cal_data, raw_data) # this calls 'DPxUpdateRegCache' as well
 
@@ -206,6 +211,13 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         self.trial_data['start_x'].append(self.start_x)
                         self.trial_data['start_y'].append(self.start_y)
                         
+                        #decide if trial is stim trial
+                        stim_trial = random.binomial(1,fsm_parameter['stim_prob'])
+                        #if stim trial, decide when in stim window to start stim
+                        if stim_trial:
+                            stim_start = random.randint(0,fsm_parameter['stim_window']-1)
+                            t_stim = avg_reaction_time-((stim_window/2)-1)+stim_start #time from fixation end to start stim
+                        
                         cue_pos = np.array(target_pos_list[tgt_idx]['prim_tgt_pos']) + np.array(start_pos)
                         self.cue_x = cue_pos[0]
                         self.cue_y = cue_pos[1]
@@ -227,7 +239,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         dout_ch_1 = 0
                         dout_ch_5 = 0
                         self.pd_tgt.draw()
-                        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                         DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         self.window.flip() 
                         state = 'STR_TARGET_PURSUIT'
@@ -249,7 +261,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             dout_ch_1 = 1
                             dout_ch_5 = 1
                             self.tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip()                     
                         if self.t - self.pull_data_t > 5:
@@ -277,7 +289,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             dout_ch_1 = 0
                             dout_ch_5 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
@@ -298,7 +310,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             self.pd_tgt.draw()
                             dout_ch_1 = 0
                             dout_ch_5 = 0
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             lib.playSound(1000,0.1) # neutral beep  
@@ -310,7 +322,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             dout_ch_1 = 0
                             dout_ch_5 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'  
@@ -335,7 +347,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                             dout_ch_1 = 1
                             dout_ch_5 = 1
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'INCORRECT_SACCADE'                          
@@ -350,7 +362,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             dout_ch_1 = 0
                             dout_ch_5 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
@@ -369,7 +381,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                             dout_ch_1 = 1
                             dout_ch_5 = 1
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'INCORRECT_SACCADE'
@@ -397,7 +409,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                                   self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                                   dout_ch_1 = 1
                                   dout_ch_5 = 1
-                                  DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                                  DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                                   DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                                   self.window.flip() 
                                   state = 'INCORRECT_SACCADE'
@@ -409,7 +421,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             dout_ch_1 = 0
                             dout_ch_5 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
@@ -429,7 +441,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         self.tgt.draw()
                         dout_ch_1 = 1
                         dout_ch_5 = 1
-                        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                         DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         self.window.flip()
                         state = 'END_TARGET_FIXATION'  
@@ -451,7 +463,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             dout_ch_1 = 0
                             dout_ch_5 = 0 
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'   
@@ -465,7 +477,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             dout_ch_1 = 0
                             dout_ch_5 = 0
                             self.pd_tgt.draw()
-                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+                            DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
@@ -512,7 +524,8 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
         dout_ch_1 = 1 # nominal PD
         dout_ch_3 = 0 # random signal
         dout_ch_5 = 1 # LED
-        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
+        dout_ch_7 = 0 # stim
+        DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
         DPxUpdateRegCache()
         # Reset time
         self.t = math.nan
@@ -612,7 +625,12 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                     'num_prim_sac_dir':8,
                     'first_prim_sac_dir': 0,
                     'ITI':0.1,
-                    'pump_switch_interval':50
+                    'pump_switch_interval':50,
+                    'avg_reaction_time':150,
+                    'stim_window':50,
+                    'stim_prob':0.2,
+                    'stim_length':2,
+                    'stim_waveform':'square'
                     }
         return parameter
     
@@ -686,8 +704,12 @@ class OptoSimpleSacGui(FsmGui):
         self.first_dir_QDoubleSpinBox.valueChanged.connect(self.first_dir_QDoubleSpinBox_valueChanged)
         self.iti_QDoubleSpinBox.valueChanged.connect(self.iti_QDoubleSpinBox_valueChanged)
         self.pump_switch_QDoubleSpinBox.valueChanged.connect(self.pump_switch_QDoubleSpinBox_valueChanged)
+        self.avg_reaction_time_QDoubleSpinBox.valueChanged.connect(self.avg_reaction_time_QDoubleSpinBox_valueChanged)
+        self.stim_window_QDoubleSpinBox.valueChanged.connect(self.stim_window_QDoubleSpinBox_valueChanged)
+        self.stim_prob_QDoubleSpinBox.valueChanged.connect(self.stim_prob_QDoubleSpinBox_valueChanged)
+        self.stim_length_QDoubleSpinBox.valueChanged.connect(self.stim_length_QDoubleSpinBox_valueChanged)
+        self.stim_waveform_QComboBox.currentTextChanged.connect(self.stim_waveform_QComboBox_currentTextChanged)
         self.save_QPushButton.clicked.connect(self.save_QPushButton_clicked)
-    
     #%% SLOTS
     @pyqtSlot()
     def toolbar_run_QAction_triggered(self):
@@ -850,6 +872,32 @@ class OptoSimpleSacGui(FsmGui):
     def pump_switch_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['pump_switch_interval'] = self.pump_switch_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+    
+    @pyqtSlot()
+    def avg_reaction_time_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['avg_reaction_time'] = self.avg_reaction_time_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00') 
+    
+    @pyqtSlot()
+    def stim_window_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['stim_window'] = self.stim_window_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')   
+        
+    @pyqtSlot()
+    def stim_prob_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['stim_prob'] = self.stim_prob_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00') 
+        
+    @pyqtSlot()
+    def stim_length_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['stim_length'] = self.stim_length_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00') 
+    
+    @pyqtSlot()
+    def stim_waveform_QComboBox_currentTextChanged(self):
+        self.exp_parameter['stim_waveform'] = self.stim_waveform_QComboBox.currentText()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00') 
+    
     @pyqtSlot()
     def save_QPushButton_clicked(self):
         with open(self.parameter_file_path,'r') as file:
@@ -858,6 +906,7 @@ class OptoSimpleSacGui(FsmGui):
         with open(self.parameter_file_path,'w') as file:
             json.dump(all_parameter, file, indent=4)
         self.save_QPushButton.setStyleSheet('background-color: #39E547')  
+        
     #%% GUI
     def init_gui(self):
         # Disable plots
@@ -866,7 +915,19 @@ class OptoSimpleSacGui(FsmGui):
         # Disable pumps
         self.pump_1.deleteLater()
         self.pump_2.deleteLater()   
-        # Side panel
+        # Side panel with 2 tabs, 1 for Sac Params, 1 for Stim params
+        self.sidepanel_params_TabWidget = QTabWidget()
+        self.sidepanel_params_1_tab_QWidget = QWidget()
+        self.sidepanel_params_1_tab_QVBoxLayout = QVBoxLayout()
+        self.sidepanel_params_1_tab_QWidget.setLayout(self.sidepanel_params_1_tab_QVBoxLayout)
+        self.sidepanel_params_2_tab_QWidget = QWidget()
+        self.sidepanel_params_2_tab_QVBoxLayout = QVBoxLayout()
+        self.sidepanel_params_2_tab_QWidget.setLayout(self.sidepanel_params_2_tab_QVBoxLayout)
+        self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_1_tab_QWidget, 'Saccade')
+        self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_2_tab_QWidget, 'Stimulation')
+        self.sidepanel_custom_QVBoxLayout.addWidget(self.sidepanel_params_TabWidget)
+        
+        # Side panel params
         self.horz_offset_QHBoxLayout = QHBoxLayout()
         self.horz_offset_QLabel = QLabel('Horizontal offset (deg):')
         self.horz_offset_QHBoxLayout.addWidget(self.horz_offset_QLabel)
@@ -878,7 +939,7 @@ class OptoSimpleSacGui(FsmGui):
         self.horz_offset_QDoubleSpinBox.setDecimals(1)
         self.horz_offset_QDoubleSpinBox.setSingleStep(0.1)
         self.horz_offset_QHBoxLayout.addWidget(self.horz_offset_QDoubleSpinBox)       
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.horz_offset_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.horz_offset_QHBoxLayout)
         
         self.vert_offset_QHBoxLayout = QHBoxLayout()
         self.vert_offset_QLabel = QLabel('Vertical offset (deg):')
@@ -891,7 +952,7 @@ class OptoSimpleSacGui(FsmGui):
         self.vert_offset_QDoubleSpinBox.setDecimals(1)
         self.vert_offset_QDoubleSpinBox.setSingleStep(0.1)
         self.vert_offset_QHBoxLayout.addWidget(self.vert_offset_QDoubleSpinBox)       
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.vert_offset_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.vert_offset_QHBoxLayout)
         
         self.max_allow_time_QHBoxLayout = QHBoxLayout()
         self.max_allow_time_QLabel = QLabel("Max. allowed time outside target (s):")
@@ -903,7 +964,7 @@ class OptoSimpleSacGui(FsmGui):
         self.max_allow_time_QDoubleSpinBox.setSingleStep(0.1)
         self.max_allow_time_QDoubleSpinBox.setDecimals(1)
         self.max_allow_time_QHBoxLayout.addWidget(self.max_allow_time_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.max_allow_time_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.max_allow_time_QHBoxLayout)
         
         self.min_fix_time_QHBoxLayout = QHBoxLayout()
         self.min_fix_time_QLabel = QLabel("Minimum fixation time (s):")
@@ -915,7 +976,7 @@ class OptoSimpleSacGui(FsmGui):
         self.min_fix_time_QDoubleSpinBox.setSingleStep(0.1)
         self.min_fix_time_QDoubleSpinBox.setDecimals(1)
         self.min_fix_time_QHBoxLayout.addWidget(self.min_fix_time_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.min_fix_time_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.min_fix_time_QHBoxLayout)
         
         self.max_wait_fixation_QHBoxLayout = QHBoxLayout()
         self.max_wait_fixation_QLabel = QLabel("Maximum wait for fixation (s):")
@@ -927,7 +988,7 @@ class OptoSimpleSacGui(FsmGui):
         self.max_wait_fixation_QDoubleSpinBox.setSingleStep(0.1)
         self.max_wait_fixation_QDoubleSpinBox.setDecimals(1)
         self.max_wait_fixation_QHBoxLayout.addWidget(self.max_wait_fixation_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.max_wait_fixation_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.max_wait_fixation_QHBoxLayout)
         
         self.pun_time_QHBoxLayout = QHBoxLayout()
         self.pun_time_QLabel = QLabel("Punishment time (s):")
@@ -939,7 +1000,7 @@ class OptoSimpleSacGui(FsmGui):
         self.pun_time_QDoubleSpinBox.setSingleStep(0.1)
         self.pun_time_QDoubleSpinBox.setDecimals(1)
         self.pun_time_QHBoxLayout.addWidget(self.pun_time_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.pun_time_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pun_time_QHBoxLayout)
         
         self.time_to_reward_QHBoxLayout = QHBoxLayout()
         self.time_to_reward_QLabel = QLabel("Time to reward (s):")
@@ -951,7 +1012,7 @@ class OptoSimpleSacGui(FsmGui):
         self.time_to_reward_QDoubleSpinBox.setSingleStep(0.1)
         self.time_to_reward_QDoubleSpinBox.setDecimals(1)
         self.time_to_reward_QHBoxLayout.addWidget(self.time_to_reward_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.time_to_reward_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.time_to_reward_QHBoxLayout)
         
         self.sac_detect_threshold_QHBoxLayout = QHBoxLayout()
         self.sac_detect_threshold_QLabel = QLabel("Saccade detection threshold (deg/s):")
@@ -963,7 +1024,7 @@ class OptoSimpleSacGui(FsmGui):
         self.sac_detect_threshold_QDoubleSpinBox.setSingleStep(5)
         self.sac_detect_threshold_QDoubleSpinBox.setDecimals(0)
         self.sac_detect_threshold_QHBoxLayout.addWidget(self.sac_detect_threshold_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.sac_detect_threshold_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.sac_detect_threshold_QHBoxLayout)
         
         self.sac_on_off_threshold_QHBoxLayout = QHBoxLayout()
         self.sac_on_off_threshold_QLabel = QLabel("Saccade onset/offset threshold (deg/s):")
@@ -975,7 +1036,7 @@ class OptoSimpleSacGui(FsmGui):
         self.sac_on_off_threshold_QDoubleSpinBox.setSingleStep(5)
         self.sac_on_off_threshold_QDoubleSpinBox.setDecimals(0)
         self.sac_on_off_threshold_QHBoxLayout.addWidget(self.sac_on_off_threshold_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.sac_on_off_threshold_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.sac_on_off_threshold_QHBoxLayout)
         
         self.rew_area_QHBoxLayout = QHBoxLayout()
         self.rew_area_QLabel = QLabel("Reward area (deg):")
@@ -987,7 +1048,7 @@ class OptoSimpleSacGui(FsmGui):
         self.rew_area_QDoubleSpinBox.setSingleStep(0.1)
         self.rew_area_QDoubleSpinBox.setDecimals(1)
         self.rew_area_QHBoxLayout.addWidget(self.rew_area_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.rew_area_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.rew_area_QHBoxLayout)
         
         self.pursuit_amp_QHBoxLayout = QHBoxLayout()
         self.pursuit_amp_QLabel = QLabel("Pursuit amp. (deg):")
@@ -999,7 +1060,7 @@ class OptoSimpleSacGui(FsmGui):
         self.pursuit_amp_QDoubleSpinBox.setSingleStep(0.1)
         self.pursuit_amp_QDoubleSpinBox.setDecimals(1)
         self.pursuit_amp_QHBoxLayout.addWidget(self.pursuit_amp_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.pursuit_amp_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pursuit_amp_QHBoxLayout)
         
         self.pursuit_dur_QHBoxLayout = QHBoxLayout()
         self.pursuit_dur_QLabel = QLabel("Pursuit duration (s):")
@@ -1011,7 +1072,7 @@ class OptoSimpleSacGui(FsmGui):
         self.pursuit_dur_QDoubleSpinBox.setSingleStep(0.1)
         self.pursuit_dur_QDoubleSpinBox.setDecimals(1)
         self.pursuit_dur_QHBoxLayout.addWidget(self.pursuit_dur_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.pursuit_dur_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pursuit_dur_QHBoxLayout)
         
         self.prim_sac_amp_QHBoxLayout = QHBoxLayout()
         self.prim_sac_amp_QLabel = QLabel("Primary saccade amp. (deg):")
@@ -1023,7 +1084,7 @@ class OptoSimpleSacGui(FsmGui):
         self.prim_sac_amp_QDoubleSpinBox.setSingleStep(0.1)
         self.prim_sac_amp_QDoubleSpinBox.setDecimals(1)
         self.prim_sac_amp_QHBoxLayout.addWidget(self.prim_sac_amp_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.prim_sac_amp_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.prim_sac_amp_QHBoxLayout)
         
         self.num_sac_dir_QHBoxLayout = QHBoxLayout()
         self.num_sac_dir_QLabel = QLabel("Number of sac. direction:")
@@ -1036,7 +1097,7 @@ class OptoSimpleSacGui(FsmGui):
         self.num_sac_dir_QDoubleSpinBox.setSingleStep(1)
         self.num_sac_dir_QDoubleSpinBox.setDecimals(0)
         self.num_sac_dir_QHBoxLayout.addWidget(self.num_sac_dir_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.num_sac_dir_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.num_sac_dir_QHBoxLayout)
         
         self.first_dir_QHBoxLayout = QHBoxLayout()
         self.first_dir_QLabel = QLabel("1st direction (deg):")
@@ -1049,7 +1110,7 @@ class OptoSimpleSacGui(FsmGui):
         self.first_dir_QDoubleSpinBox.setSingleStep(1)
         self.first_dir_QDoubleSpinBox.setDecimals(0)
         self.first_dir_QHBoxLayout.addWidget(self.first_dir_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.first_dir_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.first_dir_QHBoxLayout)
         
         self.iti_QHBoxLayout = QHBoxLayout()
         self.iti_QLabel = QLabel("ITI (s):")
@@ -1061,7 +1122,7 @@ class OptoSimpleSacGui(FsmGui):
         self.iti_QDoubleSpinBox.setSingleStep(0.1)
         self.iti_QDoubleSpinBox.setDecimals(1)
         self.iti_QHBoxLayout.addWidget(self.iti_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.iti_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.iti_QHBoxLayout)
         
         self.pump_switch_QHBoxLayout = QHBoxLayout()
         self.pump_switch_QLabel = QLabel("Pump switch interval (trials):")
@@ -1074,7 +1135,70 @@ class OptoSimpleSacGui(FsmGui):
         self.pump_switch_QDoubleSpinBox.setSingleStep(1)
         self.pump_switch_QDoubleSpinBox.setDecimals(0)
         self.pump_switch_QHBoxLayout.addWidget(self.pump_switch_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.pump_switch_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pump_switch_QHBoxLayout)
+        
+        self.avg_reaction_time_QHBoxLayout = QHBoxLayout()
+        self.avg_reaction_time_QLabel = QLabel('Average Reaction Time (ms):')
+        self.avg_reaction_time_QHBoxLayout.addWidget(self.avg_reaction_time_QLabel)
+        self.avg_reaction_time_QLabel.setAlignment(Qt.AlignRight)
+        self.avg_reaction_time_QDoubleSpinBox = QDoubleSpinBox()
+        self.avg_reaction_time_QDoubleSpinBox.setValue(150)
+        self.avg_reaction_time_QDoubleSpinBox.setMinimum(50)
+        self.avg_reaction_time_QDoubleSpinBox.setMaximum(250)
+        self.avg_reaction_time_QDoubleSpinBox.setDecimals(0)
+        self.avg_reaction_time_QDoubleSpinBox.setSingleStep(1)
+        self.avg_reaction_time_QHBoxLayout.addWidget(self.avg_reaction_time_QDoubleSpinBox)       
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.avg_reaction_time_QHBoxLayout)
+        
+        self.stim_window_QHBoxLayout = QHBoxLayout()
+        self.stim_window_QLabel = QLabel('Stimulation Window (ms):')
+        self.stim_window_QHBoxLayout.addWidget(self.stim_window_QLabel)
+        self.stim_window_QLabel.setAlignment(Qt.AlignRight)
+        self.stim_window_QDoubleSpinBox = QDoubleSpinBox()
+        self.stim_window_QDoubleSpinBox.setValue(50)
+        self.stim_window_QDoubleSpinBox.setMinimum(10)
+        self.stim_window_QDoubleSpinBox.setMaximum(100)
+        self.stim_window_QDoubleSpinBox.setDecimals(0)
+        self.stim_window_QDoubleSpinBox.setSingleStep(1)
+        self.stim_window_QHBoxLayout.addWidget(self.stim_window_QDoubleSpinBox)       
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.stim_window_QHBoxLayout)
+        
+        self.stim_prob_QHBoxLayout = QHBoxLayout()
+        self.stim_prob_QLabel = QLabel('Stimulation Probablility:')
+        self.stim_prob_QHBoxLayout.addWidget(self.stim_prob_QLabel)
+        self.stim_prob_QLabel.setAlignment(Qt.AlignRight)
+        self.stim_prob_QDoubleSpinBox = QDoubleSpinBox()
+        self.stim_prob_QDoubleSpinBox.setValue(0.20)
+        self.stim_prob_QDoubleSpinBox.setMinimum(0)
+        self.stim_prob_QDoubleSpinBox.setMaximum(1)
+        self.stim_prob_QDoubleSpinBox.setDecimals(2)
+        self.stim_prob_QDoubleSpinBox.setSingleStep(0.05)
+        self.stim_prob_QHBoxLayout.addWidget(self.stim_prob_QDoubleSpinBox)       
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.stim_prob_QHBoxLayout)
+        
+        self.stim_length_QHBoxLayout = QHBoxLayout()
+        self.stim_length_QLabel = QLabel('Stimulation Length (ms):')
+        self.stim_length_QHBoxLayout.addWidget(self.stim_length_QLabel)
+        self.stim_length_QLabel.setAlignment(Qt.AlignRight)
+        self.stim_length_QDoubleSpinBox = QDoubleSpinBox()
+        self.stim_length_QDoubleSpinBox.setValue(3)
+        self.stim_length_QDoubleSpinBox.setMinimum(1)
+        self.stim_length_QDoubleSpinBox.setMaximum(100)
+        self.stim_length_QDoubleSpinBox.setDecimals(1)
+        self.stim_length_QDoubleSpinBox.setSingleStep(0.5)
+        self.stim_length_QHBoxLayout.addWidget(self.stim_length_QDoubleSpinBox)       
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.stim_length_QHBoxLayout)
+        
+        self.stim_waveform_QHBoxLayout = QHBoxLayout()
+        self.stim_waveform_QHBoxLayout.setAlignment(Qt.AlignTop)
+        self.stim_waveform_QLabel = QLabel('Stimulation Waveform:')
+        self.stim_waveform_QHBoxLayout.addWidget(self.stim_waveform_QLabel)
+        self.stim_waveform_QLabel.setAlignment(Qt.AlignRight)
+        self.stim_waveform_QComboBox = QComboBox()
+        self.stim_waveform_QHBoxLayout.addWidget(self.stim_waveform_QComboBox)
+        self.stim_waveform_QComboBox.addItem('Square')
+        # self.stim_waveform_QComboBox.addItem('Ramp')
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.stim_waveform_QHBoxLayout)
         
         self.save_QPushButton = QPushButton('Save parameters')
         self.sidepanel_custom_QVBoxLayout.addWidget(self.save_QPushButton)
@@ -1097,7 +1221,12 @@ class OptoSimpleSacGui(FsmGui):
                     'num_prim_sac_dir':8,
                     'first_prim_sac_dir': 0,
                     'ITI':0.1,
-                    'pump_switch_interval':50
+                    'pump_switch_interval':50,
+                    'avg_reaction_time':150,
+                    'stim_window':50,
+                    'stim_prob':0.2,
+                    'stim_length':2,
+                    'stim_waveform':'square'
                     }
         return parameter
     
@@ -1122,7 +1251,11 @@ class OptoSimpleSacGui(FsmGui):
         self.first_dir_QDoubleSpinBox.setValue(self.exp_parameter['first_prim_sac_dir'])
         self.iti_QDoubleSpinBox.setValue(self.exp_parameter['ITI'])
         self.pump_switch_QDoubleSpinBox.setValue(self.exp_parameter['pump_switch_interval'])
-        
+        self.avg_reaction_time_QDoubleSpinBox.setValue(self.exp_parameter['avg_reaction_time'])
+        self.stim_window_QDoubleSpinBox.setValue(self.exp_parameter['stim_window'])
+        self.stim_prob_QDoubleSpinBox.setValue(self.exp_parameter['stim_prob'])
+        self.stim_length_QDoubleSpinBox.setValue(self.exp_parameter['stim_length'])
+        self.stim_waveform_QComboBox.setCurrentText(self.exp_parameter['stim_waveform'])
 
 class OptoSimpleSacGuiProcess(multiprocessing.Process):
     def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, main_parameter, parent=None):
