@@ -90,9 +90,9 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                 fsm_parameter, _ = lib.load_parameter('experiment','exp_parameter.json',True,True,self.set_default_parameter,self.exp_name, self.main_parameter['current_monkey'])
                 cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])
                 #init stim params
-                avg_reaction_time = fsm_parameter['avg_reaction_time']
-                stim_window = fsm_parameter['stim_window']
-                stim_length = fsm_parameter['stim_length']
+                avg_reaction_time = fsm_parameter['avg_reaction_time']/1000
+                stim_window = fsm_parameter['stim_window']/1000
+                stim_length = fsm_parameter['stim_length']/1000
                 # Create target list
                 target_pos_list = lib.make_prim_target(fsm_parameter)
                 num_tgt_pos = len(target_pos_list)
@@ -215,12 +215,12 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         stim_start_time = -1
                         stim_on_time = -1
                         dout_ch_7 = 0
-                        stim_trial = random.binomial(1,fsm_parameter['stim_prob'])
+                        stim_trial = np.random.binomial(1,fsm_parameter['stim_prob'])
                         self.trial_data['stim_trial_bool'].append(stim_trial)
                         #if stim trial, decide when in stim window to start stim
                         if stim_trial:
-                            stim_start = random.randint(0,fsm_parameter['stim_window']-1) #randomly select time in stim window
-                            t_stim = avg_reaction_time-((stim_window/2)-1)+stim_start #time from fixation end to start stim
+                            stim_start = random.randint(0,fsm_parameter['stim_window']-1)/1000 #randomly select time in stim window
+                            t_stim = avg_reaction_time-((stim_window/2)-.001)+stim_start #time from fixation end to start stim
                         
                         cue_pos = np.array(target_pos_list[tgt_idx]['prim_tgt_pos']) + np.array(start_pos)
                         self.cue_x = cue_pos[0]
@@ -345,13 +345,16 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         #if stim trial, start stim start timer
                         if stim_trial and (stim_start_time == -1):
                             stim_start_time = self.t
+                            # print('start timer')
+                            # print(stim_start_time)
                         self.trial_data['state_start_t_detect_sac_start'].append(self.t)
                         state = 'DETECT_SACCADE_START'
                         
                     if state == 'DETECT_SACCADE_START':
                         eye_dist_from_start_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
-                        #check if stim should start
-                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1):
+                        # check if stim should start
+                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
+                            # print('start timer1')
                             stim_start_time = -1 # reset stim start timer 
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
@@ -359,7 +362,8 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         #check if stim should stop
-                        if stim_trial and ((self.t - stim_on_time) >= fsm_parameter['stim_length']) and (stim_on_time != -1):
+                        if stim_trial and ((self.t - stim_on_time) >= stim_length) and (stim_on_time != -1):
+                            # print('start timer')
                             stim_on_time = -1 #reset stim on timer
                             self.trial_data['t_stim_off'].append(self.t)
                             dout_ch_7 = 0
@@ -399,7 +403,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             
                     if state == 'SACCADE':
                         #check if stim should start
-                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1):
+                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
                             stim_start_time = -1 # reset stim start timer 
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
@@ -407,7 +411,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         #check if stim should stop
-                        if stim_trial and ((self.t - stim_on_time) >= fsm_parameter['stim_length']) and (stim_on_time != -1):
+                        if stim_trial and ((self.t - stim_on_time) >= stim_length) and (stim_on_time != -1):
                             stim_on_time = -1 #reset stim on timer
                             self.trial_data['t_stim_off'].append(self.t)
                             dout_ch_7 = 0
@@ -441,7 +445,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             
                     if state == 'DETECT_SACCADE_END':
                         #check if stim should start
-                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1):
+                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
                             stim_start_time = -1 # reset stim start timer 
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
@@ -449,7 +453,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         #check if stim should stop
-                        if stim_trial and ((self.t - stim_on_time) >= fsm_parameter['stim_length']) and (stim_on_time != -1):
+                        if stim_trial and ((self.t - stim_on_time) >= stim_length) and (stim_on_time != -1):
                             stim_on_time = -1 #reset stim on timer
                             self.trial_data['t_stim_off'].append(self.t)
                             dout_ch_7 = 0
@@ -488,7 +492,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             
                     if state == 'DELIVER_REWARD':
                         #check if stim should start
-                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1):
+                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
                             stim_start_time = -1 # reset stim start timer 
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
@@ -496,7 +500,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         #check if stim should stop
-                        if stim_trial and ((self.t - stim_on_time) >= fsm_parameter['stim_length']) and (stim_on_time != -1):
+                        if stim_trial and ((self.t - stim_on_time) >= stim_length) and (stim_on_time != -1):
                             stim_on_time = -1 #reset stim on timer
                             self.trial_data['t_stim_off'].append(self.t)
                             dout_ch_7 = 0
@@ -523,7 +527,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         
                     if state == 'END_TARGET_FIXATION':
                         #check if stim should start
-                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1):
+                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
                             stim_start_time = -1 # reset stim start timer 
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
@@ -531,7 +535,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         #check if stim should stop
-                        if stim_trial and ((self.t - stim_on_time) >= fsm_parameter['stim_length']) and (stim_on_time != -1):
+                        if stim_trial and ((self.t - stim_on_time) >= stim_length) and (stim_on_time != -1):
                             stim_on_time = -1 #reset stim on timer
                             self.trial_data['t_stim_off'].append(self.t)
                             dout_ch_7 = 0
@@ -561,7 +565,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                     if state == 'INCORRECT_SACCADE':
                         self.window.flip() # remove all targets
                         #check if stim should start
-                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1):
+                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
                             stim_start_time = -1 # reset stim start timer 
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
@@ -569,7 +573,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         #check if stim should stop
-                        if stim_trial and ((self.t - stim_on_time) >= fsm_parameter['stim_length']) and (stim_on_time != -1):
+                        if stim_trial and ((self.t - stim_on_time) >= stim_length) and (stim_on_time != -1):
                             stim_on_time = -1 #reset stim on timer
                             self.trial_data['t_stim_off'].append(self.t)
                             dout_ch_7 = 0
@@ -589,7 +593,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             
                     if state == 'TRIAL_SUCCESS':
                         #check if stim should start
-                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1):
+                        if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
                             stim_start_time = -1 # reset stim start timer 
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
@@ -597,7 +601,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         #check if stim should stop
-                        if stim_trial and ((self.t - stim_on_time) >= fsm_parameter['stim_length']) and (stim_on_time != -1):
+                        if stim_trial and ((self.t - stim_on_time) >= stim_length) and (stim_on_time != -1):
                             stim_on_time = -1 #reset stim on timer
                             self.trial_data['t_stim_off'].append(self.t)
                             dout_ch_7 = 0
