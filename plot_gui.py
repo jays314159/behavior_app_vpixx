@@ -208,9 +208,12 @@ class PlotGui(FsmGui):
             msg = self.fsm_to_plot_priority_socket.recv_pyobj()
             msg_title = msg[0]
             if msg_title == 'tgt_data':
-                cue_x, cue_y, end_x, end_y = msg[1]
+                if len(msg[1]) == 2: # only cue tgt
+                    cue_x, cue_y = msg[1]
+                elif len(msg[1]) == 4: # cue and end tgt
+                    cue_x, cue_y, end_x, end_y = msg[1]
+                    self.plot_1_end.setData([end_x],[end_y])
                 self.plot_1_cue.setData([cue_x],[cue_y])
-                self.plot_1_end.setData([end_x],[end_y])
             if msg_title == 'trial_data':
                 self.data_manager.trial_num = msg[1]
                 self.data_manager.trial_data = msg[2]
