@@ -218,22 +218,34 @@ class PlotGui(FsmGui):
                 self.data_manager.trial_num = msg[1]
                 self.data_manager.trial_data = msg[2]
                 self.data_manager.save_data()
-            if msg_title == 'pump_1':
-                self.pump_1.pump_once_QPushButton_clicked()
-            if msg_title == 'pump_2':
-                self.pump_2.pump_once_QPushButton_clicked()
+            if msg_title == 'pump':
+                which_pump = msg[1]
+                cmd = msg[2]
+                value = msg[3]
+                if cmd == 'pump':
+                    self.pump[str(which_pump)].pump_once_QPushButton_clicked() 
+                elif cmd == 'disable_vol_change':
+                    self.pump[str(which_pump)].vol_apply_QPushButton.setDisabled(True)
+                elif cmd == 'enable_vol_change':
+                    self.pump[str(which_pump)].vol_apply_QPushButton.setEnabled(True)
+                elif cmd == 'set_vol':
+                    self.pump[str(which_pump)].vol_QDoubleSpinBox.setValue(value)
+                    self.pump[str(which_pump)].vol_apply_QPushButton_clicked()
             if msg_title == 'log':
                 self.log_QPlainTextEdit.appendPlainText(msg[1])
             if msg_title == 'confirm_connection':
                 self.plot_to_fsm_socket.send_pyobj((0,0))
             if msg_title == 'init_data':
-                _, exp_name, exp_parameter = msg
+                _, exp_name, exp_parameter = msg 
                 self.data_manager.init_data(exp_name,exp_parameter)
+            if msg_title == 'processed_eyelink_data':
+                self.data_manager.append_processed_data(msg[1])
+                self.copy_behave_to_open_ephys_folder()
             if msg_title == 'run':
                 self.toolbar_run_QAction.setDisabled(True)
                 self.toolbar_stop_QAction.setEnabled(True)
                 # Control Open Ephys
-                if self.open_ephys_QCheckBox.isChecked():
+                if self.open_ephys_QCheckBox.isChecked():       
                     try:
                         open_ephys_msg = f'StartRecord RecordNode=1 CreateNewDir=1 RecDir={self.data_path_QLineEdit.text()}'
                         self.open_ephys_socket.send_string(open_ephys_msg)
