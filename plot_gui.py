@@ -128,8 +128,6 @@ class PlotGui(FsmGui):
                 self.tgt_x_data.clear()
                 self.tgt_y_data.clear()
                 self.t_data.clear()
-                for ch_idx in range(self.num_din_ch):
-                    self.din_data_dict['ch_' + str(ch_idx)].clear()
         else:
             self.log_QPlainTextEdit.appendPlainText('No connection with FSM computer.')
         # Disable file path search
