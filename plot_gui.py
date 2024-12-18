@@ -225,7 +225,7 @@ class PlotGui(FsmGui):
                 cmd = msg[2]
                 value = msg[3]
                 if cmd == 'pump':
-                    self.pump[str(which_pump)].pump_once_QPushButton_clicked() 
+                    self.pump[str(which_pump)].pump_once_QPushButton_clicked()
                 elif cmd == 'disable_vol_change':
                     self.pump[str(which_pump)].vol_apply_QPushButton.setDisabled(True)
                 elif cmd == 'enable_vol_change':
@@ -238,7 +238,7 @@ class PlotGui(FsmGui):
             if msg_title == 'confirm_connection':
                 self.plot_to_fsm_socket.send_pyobj((0,0))
             if msg_title == 'init_data':
-                _, exp_name, exp_parameter = msg 
+                _, exp_name, exp_parameter = msg
                 self.data_manager.init_data(exp_name,exp_parameter)
             if msg_title == 'processed_eyelink_data':
                 self.data_manager.append_processed_data(msg[1])
@@ -247,7 +247,7 @@ class PlotGui(FsmGui):
                 self.toolbar_run_QAction.setDisabled(True)
                 self.toolbar_stop_QAction.setEnabled(True)
                 # Control Open Ephys
-                if self.open_ephys_QCheckBox.isChecked():       
+                if self.open_ephys_QCheckBox.isChecked():
                     try:
                         open_ephys_msg = f'StartRecord RecordNode=1 CreateNewDir=1 RecDir={self.data_path_QLineEdit.text()}'
                         self.open_ephys_socket.send_string(open_ephys_msg)
@@ -307,22 +307,22 @@ class PlotGui(FsmGui):
 
         return open_ephys_socket
 
-    def copy_behave_to_open_ephys_folder(self):
-    # If controlling Open Ephys, copy the behavior files to Open Ephys folder
-    
-    # Find the latest recording folder and rename subfolder to 'raw_data'
-    rec_dir = self.data_path_QLineEdit.text()
-    recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
-    os.rename(os.path.join(recent_rec_dir,os.listdir(recent_rec_dir)[0]), os.path.join(recent_rec_dir,'raw_data'))
-    
-    if self.open_ephys_QCheckBox.isChecked():
-        try:
-            self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
-            self.open_ephys_socket.recv() 
-            shutil.copy(os.path.join(self.data_manager.data_file_path +'.hdf5'),os.path.join(recent_rec_dir,'raw_data')) # rec. path from above
-            shutil.copy(os.path.join(self.data_manager.data_file_path +'.mat'),os.path.join(recent_rec_dir,'raw_data'))
-        except Exception as error:
-            self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
+    # def copy_behave_to_open_ephys_folder(self):
+    # # If controlling Open Ephys, copy the behavior files to Open Ephys folder
+    #
+    # # Find the latest recording folder and rename subfolder to 'raw_data'
+    # rec_dir = self.data_path_QLineEdit.text()
+    # recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
+    # os.rename(os.path.join(recent_rec_dir,os.listdir(recent_rec_dir)[0]), os.path.join(recent_rec_dir,'raw_data'))
+    #
+    # if self.open_ephys_QCheckBox.isChecked():
+    #     try:
+    #         self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
+    #         self.open_ephys_socket.recv()
+    #         shutil.copy(os.path.join(self.data_manager.data_file_path +'.hdf5'),os.path.join(recent_rec_dir,'raw_data')) # rec. path from above
+    #         shutil.copy(os.path.join(self.data_manager.data_file_path +'.mat'),os.path.join(recent_rec_dir,'raw_data'))
+    #     except Exception as error:
+    #         self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
 
 if __name__ == '__main__':
     if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):
