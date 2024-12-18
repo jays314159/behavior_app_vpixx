@@ -126,6 +126,7 @@ class RwdPredFsmProcess(multiprocessing.Process):
                 self.pull_data_t = self.t
                 random_signal_t = self.t
                 trial_num = 1
+                pump_to_use = 1 # which pump to use currently
                 vel_samp_num = 3
                 vel_t_data = deque(maxlen=vel_samp_num)
                 eye_x_data = deque(maxlen=vel_samp_num)
@@ -639,20 +640,20 @@ class RwdPredFsmProcess(multiprocessing.Process):
                             if task_cond == 'forced':
                                 if rew_cond == 'l':
                                     lib.playSound(500,0.1) # low reward beep
-                                    self.fsm_to_gui_sndr.send(('pump_2', 0))
+                                    self.fsm_to_gui_sndr.send(('pump',2,'pump',0))
                                 else:
                                     lib.playSound(2000,0.1) # high reward beep
-                                    self.fsm_to_gui_sndr.send(('pump_1', 0))
+                                    self.fsm_to_gui_sndr.send(('pump',1,'pump',0))
                                 self.rew_tgt[rew_cond+'100'+str(tgt_num)].draw()
                                 
                             elif task_cond == 'choice':
                                 if eye_dist_from_cue_tgt_low_rew < fsm_parameter['rew_area']/2:
                                     lib.playSound(500,0.1)
-                                    self.fsm_to_gui_sndr.send(('pump_2', 0))
+                                    self.fsm_to_gui_sndr.send(('pump',2,'pump',0))
                                     choice = 'l'
                                 elif eye_dist_from_cue_tgt_high_rew < fsm_parameter['rew_area']/2:
                                     lib.playSound(2000,0.1)
-                                    self.fsm_to_gui_sndr.send(('pump_1', 0))
+                                    self.fsm_to_gui_sndr.send(('pump',1,'pump',0))
                                     choice = 'h'
                                 self.trial_data['choice'].append(choice.encode(encoding='UTF-8'))
                                 self.rew_tgt['h100'+str(high_rew_tgt_num)].draw()
@@ -1039,11 +1040,11 @@ class RwdPredGui(FsmGui):
                 self.exp_parameter['version'] = 1.0
                 self.fsm_to_plot_priority_socket.send_pyobj(('init_data',self.exp_name, self.exp_parameter))
                 # Disable changing pump volume on plotting side
-                self.fsm_to_plot_priority_socket.send_pyobj(('pump_1','disable_vol_change',0))
-                self.fsm_to_plot_priority_socket.send_pyobj(('pump_2','disable_vol_change',0))
+                self.fsm_to_plot_priority_socket.send_pyobj(('pump',1,'disable_vol_change',0))
+                self.fsm_to_plot_priority_socket.send_pyobj(('pump',2,'disable_vol_change',0))
                 # Set pump volumes
-                self.fsm_to_plot_priority_socket.send_pyobj(('pump_1','set_vol',self.high_rew_amt_QDoubleSpinBox.value()))
-                self.fsm_to_plot_priority_socket.send_pyobj(('pump_2','set_vol',self.low_rew_amt_QDoubleSpinBox.value()))
+                self.fsm_to_plot_priority_socket.send_pyobj(('pump',1,'set_vol',self.high_rew_amt_QDoubleSpinBox.value()))
+                self.fsm_to_plot_priority_socket.send_pyobj(('pump',2,'set_vol',self.low_rew_amt_QDoubleSpinBox.value()))
                 # Start timer to get data from FSM
                 self.data_QTimer.start(self.data_rate)
                 # Tell plot GUI we are starting
@@ -1239,8 +1240,8 @@ class RwdPredGui(FsmGui):
         self.plot_1_PlotWidget.deleteLater()
         self.plot_2_PlotWidget.deleteLater()
         # Disable pumps
-        self.pump_1.deleteLater()
-        self.pump_2.deleteLater()
+        self.pump['1'].deleteLater()
+        self.pump['2'].deleteLater()
         # Side panel tabs for extra params.
         self.sidepanel_params_TabWidget= QTabWidget()
         self.sidepanel_params_1_tab_QWidget = QWidget()

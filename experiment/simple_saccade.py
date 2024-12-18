@@ -420,7 +420,7 @@ class SimpleSacFsmProcess(multiprocessing.Process):
                                 pump_to_use = 2
                             else:
                                 pump_to_use = 1
-                        self.fsm_to_gui_sndr.send(('pump_' + str(pump_to_use),0))
+                        self.fsm_to_gui_sndr.send(('pump',pump_to_use,'pump',0))
                                                 
                         lib.playSound(2000,0.1) # reward beep
                         state_start_time = self.t
@@ -864,8 +864,8 @@ class SimpleSacGui(FsmGui):
         self.plot_1_PlotWidget.deleteLater()
         self.plot_2_PlotWidget.deleteLater()
         # Disable pumps
-        self.pump_1.deleteLater()
-        self.pump_2.deleteLater()   
+        self.pump['1'].deleteLater()
+        self.pump['2'].deleteLater()   
         # Side panel
         self.horz_offset_QHBoxLayout = QHBoxLayout()
         self.horz_offset_QLabel = QLabel('Horizontal offset (deg):')

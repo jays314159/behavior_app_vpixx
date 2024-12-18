@@ -433,7 +433,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                                 else:
                                     pump_to_use = 1
                                 self.fsm_to_gui_sndr.send(('log','Pump switchd to '+str(pump_to_use)))
-                            self.fsm_to_gui_sndr.send(('pump_' + str(pump_to_use),0))
+                            self.fsm_to_gui_sndr.send(('pump',pump_to_use,'pump',0))
                                                     
                             lib.playSound(2000,0.1) # reward beep
                             state_start_time = self.t
@@ -916,8 +916,8 @@ class CorrSacGui(FsmGui):
         self.plot_1_PlotWidget.deleteLater()
         self.plot_2_PlotWidget.deleteLater()
         # Disable pumps
-        self.pump_1.deleteLater()
-        self.pump_2.deleteLater()
+        self.pump['1'].deleteLater()
+        self.pump['2'].deleteLater()
         # Side panel tabs for extra params.
         self.sidepanel_params_TabWidget= QTabWidget()
         self.sidepanel_params_1_tab_QWidget = QWidget()

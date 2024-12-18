@@ -128,6 +128,8 @@ class PlotGui(FsmGui):
                 self.tgt_x_data.clear()
                 self.tgt_y_data.clear()
                 self.t_data.clear()
+                for ch_idx in range(self.num_din_ch):
+                    self.din_data_dict['ch_' + str(ch_idx)].clear()
         else:
             self.log_QPlainTextEdit.appendPlainText('No connection with FSM computer.')
         # Disable file path search
@@ -273,15 +275,6 @@ class PlotGui(FsmGui):
                         self.toolbar_stop_QAction.setDisabled(True)
                 # Convert the data of the current recording
                 self.data_manager.convert_data()
-                # If controlling Open Ephys, copy the behavior files to Open Ephys folder
-                if self.open_ephys_QCheckBox.isChecked():
-                    try:
-                        self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
-                        self.open_ephys_socket.recv()
-                        shutil.copy(os.path.join(self.data_manager.data_file_path +'.hdf5'),os.path.join(recent_rec_dir,'raw_data')) # rec. path from above
-                        shutil.copy(os.path.join(self.data_manager.data_file_path +'.mat'),os.path.join(recent_rec_dir,'raw_data'))
-                    except Exception as error:
-                        self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
                 # Enable file path search
                 self.data_path_QPushButton.setEnabled(True)
     @pyqtSlot()
@@ -301,6 +294,9 @@ class PlotGui(FsmGui):
         message = signal[0]
         if message == 'log':
             self.log_QPlainTextEdit.appendPlainText(signal[1])
+            if signal[1] == 'Appending processed data finished.':
+                # Convert the data of the current recording
+                self.data_manager.convert_data()
 
     def init_open_ephys_connection(self, port_num):
         open_ephys_context = zmq.Context()
@@ -310,6 +306,23 @@ class PlotGui(FsmGui):
         open_ephys_socket.connect(f"tcp://127.0.0.1:{port_num}")
 
         return open_ephys_socket
+
+    def copy_behave_to_open_ephys_folder(self):
+    # If controlling Open Ephys, copy the behavior files to Open Ephys folder
+    
+    # Find the latest recording folder and rename subfolder to 'raw_data'
+    rec_dir = self.data_path_QLineEdit.text()
+    recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
+    os.rename(os.path.join(recent_rec_dir,os.listdir(recent_rec_dir)[0]), os.path.join(recent_rec_dir,'raw_data'))
+    
+    if self.open_ephys_QCheckBox.isChecked():
+        try:
+            self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
+            self.open_ephys_socket.recv() 
+            shutil.copy(os.path.join(self.data_manager.data_file_path +'.hdf5'),os.path.join(recent_rec_dir,'raw_data')) # rec. path from above
+            shutil.copy(os.path.join(self.data_manager.data_file_path +'.mat'),os.path.join(recent_rec_dir,'raw_data'))
+        except Exception as error:
+            self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
 
 if __name__ == '__main__':
     if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):

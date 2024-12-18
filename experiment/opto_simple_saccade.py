@@ -1040,8 +1040,8 @@ class OptoSimpleSacGui(FsmGui):
         self.plot_1_PlotWidget.deleteLater()
         self.plot_2_PlotWidget.deleteLater()
         # Disable pumps
-        self.pump_1.deleteLater()
-        self.pump_2.deleteLater()   
+        self.pump['1'].deleteLater()
+        self.pump['2'].deleteLater()   
         # Side panel with 2 tabs, 1 for Sac Params, 1 for Stim params
         self.sidepanel_params_TabWidget = QTabWidget()
         self.sidepanel_params_1_tab_QWidget = QWidget()
