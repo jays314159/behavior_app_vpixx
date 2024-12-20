@@ -293,9 +293,9 @@ class PlotGui(FsmGui):
                        self.log_QPlainTextEdit.appendPlainText('Error in connecting to SpikeGLX.')
                 # Disable file path search
                 self.data_path_QPushButton.setDisabled(True)
-                if msg_title == 'stop':
-                    self.toolbar_run_QAction.setEnabled(True)
-                    self.toolbar_stop_QAction.setDisabled(True)
+            if msg_title == 'stop':
+                self.toolbar_run_QAction.setEnabled(True)
+                self.toolbar_stop_QAction.setDisabled(True)
                 #stop open Ephys
                 if self.open_ephys_started:
                     try:
