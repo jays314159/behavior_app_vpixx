@@ -180,7 +180,7 @@ class PlotGui(FsmGui):
         self.data_manager.convert_data()
 
         # If controlling Open Ephys, copy the behavior files to Open Ephys folder
-        if self.self.open_ephys_connected:
+        if self.open_ephys_connected:
             try:
                 self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
                 self.open_ephys_socket.recv()
@@ -320,7 +320,7 @@ class PlotGui(FsmGui):
                 self.data_manager.convert_data()
 
                 # If controlling Open Ephys, copy the behavior files to Open Ephys folder
-                if self.self.open_ephys_connected:
+                if self.open_ephys_connected:
                     try:
                         self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
                         self.open_ephys_socket.recv()
