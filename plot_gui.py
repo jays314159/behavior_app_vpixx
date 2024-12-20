@@ -9,6 +9,7 @@ from PyQt5.QtCore import pyqtSlot
 from fsm_gui import FsmGui
 from data_manager import DataManager
 import app_lib as lib
+from SpikeGLX.controller import SpikeGLXHandler
 
 
 import sys, zmq, math, os, json, pathlib, shutil, ctypes
@@ -20,21 +21,29 @@ class PlotGui(FsmGui):
         empty_QWidget = QWidget()
         empty_QWidget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
         self.toolbar.addWidget(empty_QWidget)
-        self.open_ephys_restart_QAction = QAction(QtGui.QIcon(os.path.join('.', 'icon', 'restart.png')),'')
-        self.open_ephys_restart_QAction.setToolTip('Restart network connection to Open Ephys')
-        self.toolbar.addAction(self.open_ephys_restart_QAction)
-        self.open_ephys_QLabel = QLabel(' Open Ephys control: ')
-        self.open_ephys_QCheckBox = QCheckBox()
-        self.toolbar.addWidget(self.open_ephys_QLabel)
-        self.toolbar.addWidget(self.open_ephys_QCheckBox)
+        self.ephys_restart_QAction = QAction(QtGui.QIcon(os.path.join('.', 'icon', 'restart.png')),'')
+        self.ephys_restart_QAction.setToolTip('Restart network connection to Ephys')
+        self.toolbar.addAction(self.ephys_restart_QAction)
+        self.ephys_QLabel = QLabel(' Ephys control: ')
+        self.ephys_QCheckBox = QCheckBox()
+        self.toolbar.addWidget(self.ephys_QLabel)
+        self.toolbar.addWidget(self.ephys_QCheckBox)
         port_num = 5555
         try:
             self.open_ephys_socket = self.init_open_ephys_connection(port_num)
             self.open_ephys_socket.send_string('IsAcquiring')
             self.open_ephys_socket.recv()
+            self.open_ephys_connected = True
+            self.open_ephys_started = False
         except:
             err_msg = f'Connection to Open Ephys failed. Change port to {port_num} and restart connection.'
             self.log_QPlainTextEdit.appendPlainText(err_msg)
+            self.open_ephys_connected = False
+            self.open_ephys_started = False
+
+        # run SPIKEGLX
+        self.spike_glx = SpikeGLXHandler(None)
+        self.spike_glx_started = False
 
         # Set the parent path to save data in lab server format
         self.data_path_QLabel = QLabel('   File Path: ')
@@ -104,7 +113,7 @@ class PlotGui(FsmGui):
     @pyqtSlot()
     def toolbar_run_QAction_triggered(self):
         # Control Open Ephys
-        if self.open_ephys_QCheckBox.isChecked():
+        if self.open_ephys_connected:
             try:
                 open_ephys_msg = f'StartRecord RecordNode=1 CreateNewDir=1 RecDir={self.data_path_QLineEdit.text()}'
                 self.open_ephys_socket.send_string(open_ephys_msg)
@@ -112,6 +121,17 @@ class PlotGui(FsmGui):
             except Exception as error:
                 self.log_QPlainTextEdit.appendPlainText('Error in controlling Open Ephys.')
                 self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
+        # control spikeGLX        
+        else if self.ephys_QCheckBox.isChecked():  
+           try:
+                self.log_QPlainTextEdit.appendPlainText('Attempting to start SpikeGLX...')
+                if self.spike_glx.connect():
+                 self.log_QPlainTextEdit.appendPlainText('SpikeGLX recording started.')
+                 self.spike_glx.start_recording()
+                 self.spike_glx_started = True
+           except:
+               self.log_QPlainTextEdit.appendPlainText('Error in connecting to SpikeGLX.')
+     
         # Check to see if FSM process ready
         self.plot_to_fsm_socket.send_pyobj(('confirm_connection',0))
         # Wait for confirmation for 5 sec.
@@ -134,8 +154,8 @@ class PlotGui(FsmGui):
         self.data_path_QPushButton.setDisabled(True)
     @pyqtSlot()
     def toolbar_stop_QAction_triggered(self):
-        # Control Open Ephys
-        if self.open_ephys_QCheckBox.isChecked():
+        #stop open Ephys
+        if self.open_ephys_started:
             try:
                 open_ephys_msg = 'StopRecord'
                 self.open_ephys_socket.send_string(open_ephys_msg)
@@ -144,16 +164,23 @@ class PlotGui(FsmGui):
                 rec_dir = self.data_path_QLineEdit.text()
                 recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
                 os.rename(os.path.join(recent_rec_dir,os.listdir(recent_rec_dir)[0]), os.path.join(recent_rec_dir,'raw_data'))
+                self.open_ephys_started = False
             except:
                 self.log_QPlainTextEdit.appendPlainText('Error in controlling Open Ephys')
+        # stop spikeGLX
+        if self.spike_glx_started == True:
+            self.spike_glx.stop_recording()
+            self.log_QPlainTextEdit.appendPlainText('SpikeGLX recording stopped.')
+            self.spike_glx_started = False
         self.toolbar_run_QAction.setEnabled(True)
         self.toolbar_stop_QAction.setDisabled(True)
         # Stop FSM
         self.plot_to_fsm_socket.send_pyobj(('stop',0))
         # Convert the data of the current recording
         self.data_manager.convert_data()
+
         # If controlling Open Ephys, copy the behavior files to Open Ephys folder
-        if self.open_ephys_QCheckBox.isChecked():
+        if self.self.open_ephys_connected:
             try:
                 self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
                 self.open_ephys_socket.recv()
@@ -181,9 +208,13 @@ class PlotGui(FsmGui):
             self.open_ephys_socket = self.init_open_ephys_connection(port_num)
             self.open_ephys_socket.send_string('IsAcquiring')
             self.open_ephys_socket.recv()
+            self.open_ephys_connected = True
+            self.open_ephys_started = False
         except:
             err_msg = f'Connection to Open Ephys unsuccessful. Change port to {port_num} and restart connection.'
             self.log_QPlainTextEdit.appendPlainText(err_msg)
+            self.open_ephys_connected = False
+            self.open_ephys_started = False
 
     @pyqtSlot()
     def receiver_QTimer_timeout(self):
@@ -238,27 +269,35 @@ class PlotGui(FsmGui):
             if msg_title == 'init_data':
                 _, exp_name, exp_parameter = msg
                 self.data_manager.init_data(exp_name,exp_parameter)
-            if msg_title == 'processed_eyelink_data':
-                self.data_manager.append_processed_data(msg[1])
-                self.copy_behave_to_open_ephys_folder()
             if msg_title == 'run':
                 self.toolbar_run_QAction.setDisabled(True)
                 self.toolbar_stop_QAction.setEnabled(True)
                 # Control Open Ephys
-                if self.open_ephys_QCheckBox.isChecked():
+                if self.open_ephys_connected:
                     try:
                         open_ephys_msg = f'StartRecord RecordNode=1 CreateNewDir=1 RecDir={self.data_path_QLineEdit.text()}'
                         self.open_ephys_socket.send_string(open_ephys_msg)
                         self.open_ephys_socket.recv()
-                    except:
-                        self.log_QPlainTextEdit.appendPlainText('Error in controlling Open Ephys')
+                    except Exception as error:
+                        self.log_QPlainTextEdit.appendPlainText('Error in controlling Open Ephys.')
+                        self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
+                # control spikeGLX        
+                else if self.ephys_QCheckBox.isChecked():  
+                   try:
+                        self.log_QPlainTextEdit.appendPlainText('Attempting to start SpikeGLX...')
+                        if self.spike_glx.connect():
+                         self.log_QPlainTextEdit.appendPlainText('SpikeGLX recording started.')
+                         self.spike_glx.start_recording()
+                         self.spike_glx_started = True
+                   except:
+                       self.log_QPlainTextEdit.appendPlainText('Error in connecting to SpikeGLX.')
                 # Disable file path search
                 self.data_path_QPushButton.setDisabled(True)
-            if msg_title == 'stop':
-                self.toolbar_run_QAction.setEnabled(True)
-                self.toolbar_stop_QAction.setDisabled(True)
-                # Control Open Ephys
-                if self.open_ephys_QCheckBox.isChecked():
+                if msg_title == 'stop':
+                    self.toolbar_run_QAction.setEnabled(True)
+                    self.toolbar_stop_QAction.setDisabled(True)
+                #stop open Ephys
+                if self.open_ephys_started:
                     try:
                         open_ephys_msg = 'StopRecord'
                         self.open_ephys_socket.send_string(open_ephys_msg)
@@ -267,14 +306,30 @@ class PlotGui(FsmGui):
                         rec_dir = self.data_path_QLineEdit.text()
                         recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
                         os.rename(os.path.join(recent_rec_dir,os.listdir(recent_rec_dir)[0]), os.path.join(recent_rec_dir,'raw_data'))
+                        self.open_ephys_started = False
                     except:
                         self.log_QPlainTextEdit.appendPlainText('Error in controlling Open Ephys')
-                        self.toolbar_run_QAction.setEnabled(True)
-                        self.toolbar_stop_QAction.setDisabled(True)
+                # stop spikeGLX
+                if self.spike_glx_started == True:
+                    self.spike_glx.stop_recording()
+                    self.log_QPlainTextEdit.appendPlainText('SpikeGLX recording stopped.')
+                    self.spike_glx_started = False
+                # Stop FSM
+                self.plot_to_fsm_socket.send_pyobj(('stop',0))
                 # Convert the data of the current recording
                 self.data_manager.convert_data()
-                # Enable file path search
-                self.data_path_QPushButton.setEnabled(True)
+
+                # If controlling Open Ephys, copy the behavior files to Open Ephys folder
+                        if self.self.open_ephys_connected:
+                            try:
+                                self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
+                                self.open_ephys_socket.recv()
+                                shutil.copy(os.path.join(self.data_manager.data_file_path +'.hdf5'),os.path.join(recent_rec_dir,'raw_data')) # rec. path from above
+                                shutil.copy(os.path.join(self.data_manager.data_file_path +'.mat'),os.path.join(recent_rec_dir,'raw_data'))
+                            except Exception as error:
+                                self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
+                        # Enable file path search
+                        self.data_path_QPushButton.setEnabled(True)
     @pyqtSlot()
     def data_path_QPushButton_clicked(self):
         if self.data_path_QFileDialog.exec_():
@@ -313,7 +368,7 @@ class PlotGui(FsmGui):
     recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
     os.rename(os.path.join(recent_rec_dir,os.listdir(recent_rec_dir)[0]), os.path.join(recent_rec_dir,'raw_data'))
     
-    if self.open_ephys_QCheckBox.isChecked():
+    if self.ephys_QCheckBox.isChecked():
         try:
             self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
             self.open_ephys_socket.recv()
