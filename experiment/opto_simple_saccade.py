@@ -49,8 +49,8 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
         self.cue_y = 0
         self.t = math.nan
         self.pull_data_t = 0 # keep track of when data was pulled last from VPixx
-    
-    def run(self):        
+
+    def run(self):
         # Set up exp. screen
         this_monitor = monitors.Monitor(self.mon_parameter['monitor_name'], width=self.mon_parameter['monitor_width'], distance=self.mon_parameter['monitor_distance'])
         this_monitor.save()
@@ -58,26 +58,26 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
         self.window = visual.Window(size=self.mon_parameter['monitor_size'],screen=self.mon_parameter['monitor_num'], allowGUI=False, color='white', monitor=this_monitor,
                                 units='deg', winType='pyglet', fullscr=True, checkTiming=False, waitBlanking=True)
         self.window.flip()
-        
+
         # Make targets
         self.update_target()
-        
+
         # Check if VPixx available; if so, open
         DPxOpen()
-        tracker.TRACKPixx3().open() # this throws error if not device not open           
+        tracker.TRACKPixx3().open() # this throws error if not device not open
         DPxSetTPxAwake()
-        DPxSelectDevice('DATAPIXX3')   
+        DPxSelectDevice('DATAPIXX3')
         DPxUpdateRegCache()
-        
+
         # Get pointers to store data from device
         cal_data, raw_data = lib.VPixx_get_pointers_for_data()
-           
+
         # Init. var.
         random_signal_flip_duration = 0.015 # in sec., how often to flip random signal
         bitMask = 0xffffff # for VPixx digital out, in hex bit
         DPxSetDoutValue(0, bitMask)
         DPxUpdateRegCache()
-        
+
         run_exp = False
         # Process loop
         while not self.stop_fsm_process_Event.is_set():
@@ -119,10 +119,10 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                 dout_ch_7 = 0 # stim
                 DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                 DPxUpdateRegCache()
-                
+
                 run_exp = True
             # Trial loop
-            while not self.stop_fsm_process_Event.is_set() and run_exp: 
+            while not self.stop_fsm_process_Event.is_set() and run_exp:
                 if self.stop_exp_Event.is_set():
                     run_exp = False
                     self.t = math.nan
@@ -132,11 +132,11 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                     self.window.flip()
                     break
                 # Init. trial variables; reset every trial
-                self.init_trial_data()  
+                self.init_trial_data()
                 self.trial_data['right_cal_matrix'] = cal_parameter['right_cal_matrix']
                 self.trial_data['left_cal_matrix'] = cal_parameter['left_cal_matrix']
-                state = 'INIT'   
-                
+                state = 'INIT'
+
                 # FSM loop
                 while not self.stop_fsm_process_Event.is_set() and run_exp:
                     if self.stop_exp_Event.is_set():
@@ -151,11 +151,11 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                     if (self.t - random_signal_t) > random_signal_flip_duration:
                         random_signal_t = self.t
                         if random.random() > 0.5:
-                            dout_ch_3 = 1 
+                            dout_ch_3 = 1
                         else:
                             dout_ch_3 = 0
                     DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
-                    # Get time       
+                    # Get time
                     self.t = TPxBestPolyGetEyePosition(cal_data, raw_data) # this calls 'DPxUpdateRegCache' as well
 
                     # Get eye status (blinking)
@@ -180,7 +180,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         else:
                             eye_blink = True
                             self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
-                            self.eye_y = 9999 
+                            self.eye_y = 9999
                     else:
                         if not left_eye_blink:
                             eye_blink = False
@@ -199,8 +199,8 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         else:
                             eye_blink = True
                             self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
-                            self.eye_y = 9999 
-                            
+                            self.eye_y = 9999
+
                     if state == 'INIT':
                         # print('state = INIT')
                         # Set trial parameters
@@ -210,7 +210,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         self.start_y = start_pos[1]
                         self.trial_data['start_x'].append(self.start_x)
                         self.trial_data['start_y'].append(self.start_y)
-                        
+
                         #decide if trial is stim trial, reset timers
                         stim_start_time = -1
                         stim_on_time = -1
@@ -221,7 +221,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         if stim_trial:
                             stim_start = random.randint(0,fsm_parameter['stim_window']-1)/1000 #randomly select time in stim window
                             t_stim = avg_reaction_time-((stim_window/2)-.001)+stim_start #time from fixation end to start stim
-                        
+
                         cue_pos = np.array(target_pos_list[tgt_idx]['prim_tgt_pos']) + np.array(start_pos)
                         self.cue_x = cue_pos[0]
                         self.cue_y = cue_pos[1]
@@ -236,7 +236,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         pursuit_start_y = np.sin(pursuit_angle*np.pi/180)*fsm_parameter['pursuit_amp']
                         pursuit_start_y += self.start_y
                         pursuit_v_y = (self.start_y - pursuit_start_y)/fsm_parameter['pursuit_dur']
-                        
+
                         state_start_time = self.t
                         state_inter_time = self.t
                         self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
@@ -245,9 +245,9 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         self.pd_tgt.draw()
                         DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                         DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                        self.window.flip() 
+                        self.window.flip()
                         state = 'STR_TARGET_PURSUIT'
-                        
+
                     if state == 'STR_TARGET_PURSUIT':
                         #reset stim timers and turn off stim
                         stim_start_time = -1
@@ -258,7 +258,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         pursuit_x = pursuit_v_x*(self.t-state_start_time) + pursuit_start_x
-                        pursuit_y = pursuit_v_y*(self.t-state_start_time) + pursuit_start_y  
+                        pursuit_y = pursuit_v_y*(self.t-state_start_time) + pursuit_start_y
                         self.tgt_x = pursuit_x
                         self.tgt_y = pursuit_y
                         self.tgt.pos = (self.tgt_x,self.tgt_y)
@@ -269,20 +269,20 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_present'].append(self.t)
-                            state = 'STR_TARGET_PRESENT'  
+                            state = 'STR_TARGET_PRESENT'
                             dout_ch_1 = 1
                             dout_ch_5 = 1
                             self.tgt.draw()
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                            self.window.flip()                     
+                            self.window.flip()
                         if self.t - self.pull_data_t > 5:
                             self.pull_data_t = self.t
                             self.pull_data()
                             # Send trial data to GUI
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             self.init_trial_data()
-                            
+
                     if state == 'STR_TARGET_PRESENT':
                         if not eye_blink:
                             self.tgt_x = self.start_x
@@ -303,9 +303,9 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             self.pd_tgt.draw()
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                            self.window.flip() 
+                            self.window.flip()
                             state = 'STR_TARGET_PURSUIT'
-                            
+
                     if state == 'STR_TARGET_FIXATION':
                         eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
                         # If eye not available or fixating at the start target, reset the timer
@@ -317,15 +317,15 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_cue_tgt_present'].append(self.t)
                             self.tgt_x = self.cue_x
                             self.tgt_y = self.cue_y
-                            self.tgt.pos = (self.tgt_x,self.tgt_y)                   
+                            self.tgt.pos = (self.tgt_x,self.tgt_y)
                             self.tgt.draw()
                             self.pd_tgt.draw()
                             dout_ch_1 = 0
                             dout_ch_5 = 0
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                            self.window.flip() 
-                            lib.playSound(1000,0.1) # neutral beep  
+                            self.window.flip()
+                            lib.playSound(1000,0.1) # neutral beep
                             state = 'CUE_TARGET_PRESENT'
                         if (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             state_start_time = self.t
@@ -336,9 +336,9 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             self.pd_tgt.draw()
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                            self.window.flip() 
-                            state = 'STR_TARGET_PURSUIT'  
-                            
+                            self.window.flip()
+                            state = 'STR_TARGET_PURSUIT'
+
                     if state == 'CUE_TARGET_PRESENT':
                         state_start_time = self.t
                         state_inter_time = self.t
@@ -349,13 +349,13 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             # print(stim_start_time)
                         self.trial_data['state_start_t_detect_sac_start'].append(self.t)
                         state = 'DETECT_SACCADE_START'
-                        
+
                     if state == 'DETECT_SACCADE_START':
                         eye_dist_from_start_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
                         # check if stim should start
                         if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
                             # print('start timer1')
-                            stim_start_time = -1 # reset stim start timer 
+                            stim_start_time = -1 # reset stim start timer
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
                             dout_ch_7 = 1
@@ -369,11 +369,11 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             dout_ch_7 = 0
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                        if eye_speed >= fsm_parameter['sac_detect_threshold']:         
+                        if eye_speed >= fsm_parameter['sac_detect_threshold']:
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_saccade'].append(self.t)
-                            state = 'SACCADE'                 
+                            state = 'SACCADE'
                         # If eye moves away from start target, reset trial after punishment period
                         elif eye_dist_from_start_tgt > fsm_parameter['rew_area']/2:
                             state_start_time = self.t
@@ -383,8 +383,8 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             dout_ch_5 = 1
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                            self.window.flip() 
-                            state = 'INCORRECT_SACCADE'                          
+                            self.window.flip()
+                            state = 'INCORRECT_SACCADE'
                         # If time runs out before saccade detected, play punishment sound and reset the trial
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             ######
@@ -398,13 +398,13 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             self.pd_tgt.draw()
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                            self.window.flip() 
+                            self.window.flip()
                             state = 'STR_TARGET_PURSUIT'
-                            
+
                     if state == 'SACCADE':
                         #check if stim should start
                         if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
-                            stim_start_time = -1 # reset stim start timer 
+                            stim_start_time = -1 # reset stim start timer
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
                             dout_ch_7 = 1
@@ -421,7 +421,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         target_dir_vector = [self.cue_x-self.start_x,self.cue_y-self.start_y]
                         unit_target_dir_vector = target_dir_vector/np.linalg.norm(target_dir_vector)
                         saccade_dir_vector = eye_vel
-                        unit_saccade_dir_vector = saccade_dir_vector/np.linalg.norm(saccade_dir_vector)                    
+                        unit_saccade_dir_vector = saccade_dir_vector/np.linalg.norm(saccade_dir_vector)
                         angle_diff = np.arccos(np.dot(unit_target_dir_vector, unit_saccade_dir_vector))
 
                         if angle_diff >= np.pi/2:
@@ -432,7 +432,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             dout_ch_5 = 1
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                            self.window.flip() 
+                            self.window.flip()
                             state = 'INCORRECT_SACCADE'
                         else:
                             self.tgt.draw()
@@ -442,11 +442,11 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_detect_sac_end'].append(self.t)
                             state = 'DETECT_SACCADE_END'
-                            
+
                     if state == 'DETECT_SACCADE_END':
                         #check if stim should start
                         if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
-                            stim_start_time = -1 # reset stim start timer 
+                            stim_start_time = -1 # reset stim start timer
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
                             dout_ch_7 = 1
@@ -475,7 +475,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                                 dout_ch_5 = 1
                                 DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                                 DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                                self.window.flip() 
+                                self.window.flip()
                                 state = 'INCORRECT_SACCADE'
                         # If time runs out before saccade detected, reset the trial
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
@@ -487,13 +487,13 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             self.pd_tgt.draw()
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                            self.window.flip() 
+                            self.window.flip()
                             state = 'STR_TARGET_PURSUIT'
-                            
+
                     if state == 'DELIVER_REWARD':
                         #check if stim should start
                         if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
-                            stim_start_time = -1 # reset stim start timer 
+                            stim_start_time = -1 # reset stim start timer
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
                             dout_ch_7 = 1
@@ -512,7 +512,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             else:
                                 pump_to_use = 1
                         self.fsm_to_gui_sndr.send(('pump_' + str(pump_to_use),0))
-                                                
+
                         lib.playSound(2000,0.1) # reward beep
                         state_start_time = self.t
                         state_inter_time = self.t
@@ -523,12 +523,12 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                         DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                         DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                         self.window.flip()
-                        state = 'END_TARGET_FIXATION'  
-                        
+                        state = 'END_TARGET_FIXATION'
+
                     if state == 'END_TARGET_FIXATION':
                         #check if stim should start
                         if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
-                            stim_start_time = -1 # reset stim start timer 
+                            stim_start_time = -1 # reset stim start timer
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
                             dout_ch_7 = 1
@@ -555,18 +555,18 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             dout_ch_1 = 0
-                            dout_ch_5 = 0 
+                            dout_ch_5 = 0
                             self.pd_tgt.draw()
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                            self.window.flip() 
-                            state = 'STR_TARGET_PURSUIT'   
-                            
+                            self.window.flip()
+                            state = 'STR_TARGET_PURSUIT'
+
                     if state == 'INCORRECT_SACCADE':
                         self.window.flip() # remove all targets
                         #check if stim should start
                         if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
-                            stim_start_time = -1 # reset stim start timer 
+                            stim_start_time = -1 # reset stim start timer
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
                             dout_ch_7 = 1
@@ -588,13 +588,13 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             self.pd_tgt.draw()
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5 + (2**6)*dout_ch_7, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
-                            self.window.flip() 
+                            self.window.flip()
                             state = 'STR_TARGET_PURSUIT'
-                            
+
                     if state == 'TRIAL_SUCCESS':
                         #check if stim should start
                         if stim_trial and ((self.t - stim_start_time) >= t_stim) and (stim_start_time != -1) and (stim_on_time == -1):
-                            stim_start_time = -1 # reset stim start timer 
+                            stim_start_time = -1 # reset stim start timer
                             stim_on_time = self.t
                             self.trial_data['t_stim_on'].append(stim_on_time)
                             dout_ch_7 = 1
@@ -616,11 +616,11 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             trial_num += 1
                             # Init. trial variables; reset every trial
-                            self.init_trial_data()  
+                            self.init_trial_data()
                             self.trial_data['right_cal_matrix'] = cal_parameter['right_cal_matrix']
                             self.trial_data['left_cal_matrix'] = cal_parameter['left_cal_matrix']
-                            state = 'INIT'   
-                    # Append data 
+                            state = 'INIT'
+                    # Append data
                     self.trial_data['tgt_time_data'].append(self.t)
                     self.trial_data['tgt_x_data'].append(self.tgt_x)
                     self.trial_data['tgt_y_data'].append(self.tgt_y)
@@ -641,9 +641,9 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
         # Close VPixx devices
         DPxSetTPxSleep()
         DPxSelectDevice('DATAPIXX3')
-        DPxUpdateRegCache()  
-        DPxClose()        
-        tracker.TRACKPixx3().close()  
+        DPxUpdateRegCache()
+        DPxClose()
+        tracker.TRACKPixx3().close()
         # Reset digital out
         dout_ch_1 = 1 # nominal PD
         dout_ch_3 = 0 # random signal
@@ -653,16 +653,16 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
         DPxUpdateRegCache()
         # Reset time
         self.t = math.nan
- 
+
     def pull_data(self):
         '''
         to be called every 10 s or when a trial finishes, whichever is earlier
         and flush the data from VPixx. Reason for this is to prevent the data
-        from accumulating, which will incur a delay when getting data 
+        from accumulating, which will incur a delay when getting data
         '''
         # print('pull data')
         tpxData = TPxReadTPxData(0)
-        self.trial_data['vpixx_time_data'].extend(tpxData[0][0::22])
+        self.trial_data['device_time_data'].extend(tpxData[0][0::22])
         self.trial_data['eye_lx_raw_data'].extend(tpxData[0][16::22])
         self.trial_data['eye_ly_raw_data'].extend(tpxData[0][17::22])
         self.trial_data['eye_l_pupil_data'].extend(tpxData[0][3::22])
@@ -675,21 +675,21 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
         self.trial_data['dout_data'].extend(tpxData[0][10::22])
 
         TPxSetupTPxSchedule() # flushes data in DATAPixx buffer
-    
+
     def update_target(self):
         tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'tgt')
         pd_tgt_parameter,_ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'pd_tgt')
-        self.tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg', 
+        self.tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg',
                       lineColor=tgt_parameter['line_color'],fillColor=tgt_parameter['fill_color'],
                       lineWidth=tgt_parameter['line_width'])
-        self.tgt.draw() # draw once already, because the first draw may be slower - Poth, 2018   
-        self.pd_tgt = visual.Rect(win=self.window, width=pd_tgt_parameter['size'],height=pd_tgt_parameter['size'], units='deg', 
+        self.tgt.draw() # draw once already, because the first draw may be slower - Poth, 2018
+        self.pd_tgt = visual.Rect(win=self.window, width=pd_tgt_parameter['size'],height=pd_tgt_parameter['size'], units='deg',
                       lineColor=pd_tgt_parameter['line_color'],fillColor=pd_tgt_parameter['fill_color'],
                       lineWidth=pd_tgt_parameter['line_width'])
         self.pd_tgt.pos = pd_tgt_parameter['pos']
         self.pd_tgt.draw()
         self.window.clearBuffer() # clear the back buffer of previously drawn stimuli - Poth, 2018
-    
+
     def init_trial_data(self):
         '''
         initializes a dict. of trial data;
@@ -710,9 +710,9 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
         self.trial_data['state_start_t_trial_success'] = []
         self.trial_data['state_start_t_incorrect_saccade'] = []
         self.trial_data['cue_x'] = []
-        self.trial_data['cue_y'] = []       
+        self.trial_data['cue_y'] = []
         self.trial_data['start_x'] = []
-        self.trial_data['start_y'] = []     
+        self.trial_data['start_y'] = []
         self.trial_data['tgt_time_data'] = []
         self.trial_data['tgt_x_data'] = []
         self.trial_data['tgt_y_data'] = []
@@ -730,10 +730,10 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
         self.trial_data['eye_ry_raw_data'] = []
         self.trial_data['eye_r_pupil_data'] = []
         self.trial_data['eye_r_blink_data'] = []
-        self.trial_data['vpixx_time_data'] = []
+        self.trial_data['device_time_data'] = []
         self.trial_data['din_data'] = []
         self.trial_data['dout_data'] = []
-        
+
     def set_default_parameter(self):
         parameter = {
                     'horz_offset':0.0,
@@ -760,9 +760,9 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
                     'stim_waveform':'square'
                     }
         return parameter
-    
+
 class OptoSimpleSacGui(FsmGui):
-    def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, main_parameter):        
+    def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, main_parameter):
         self.exp_name = exp_name
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
         self.gui_to_fsm_sndr = gui_to_fsm_sndr
@@ -770,18 +770,18 @@ class OptoSimpleSacGui(FsmGui):
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.real_time_data_Array = real_time_data_Array
         self.main_parameter = main_parameter
-        super(OptoSimpleSacGui,self).__init__(self.stop_fsm_process_Event)      
+        super(OptoSimpleSacGui,self).__init__(self.stop_fsm_process_Event)
         self.init_gui()
-        
+
         # Create socket for ZMQ
         try:
             context = zmq.Context()
             self.fsm_to_plot_socket = context.socket(zmq.PUB)
             self.fsm_to_plot_socket.bind("tcp://192.168.0.2:5556")
-            
+
             self.fsm_to_plot_priority_socket = context.socket(zmq.PUB)
             self.fsm_to_plot_priority_socket.bind("tcp://192.168.0.2:5557")
-            
+
             self.plot_to_fsm_socket = context.socket(zmq.SUB)
             self.plot_to_fsm_socket.connect("tcp://192.168.0.1:5558")
             self.plot_to_fsm_socket.subscribe("")
@@ -792,17 +792,17 @@ class OptoSimpleSacGui(FsmGui):
             self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
             self.toolbar_run_QAction.setDisabled(True)
             self.toolbar_connect_QAction.setDisabled(True)
-        
+
         # Load exp. parameter or set default values
         self.exp_parameter, self.parameter_file_path = lib.load_parameter('experiment','exp_parameter.json',True,True,self.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
         self.cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])
         self.update_parameter()
-        
+
         which_eye_tracked = self.cal_parameter['which_eye_tracked'].lower()
         if not self.cal_parameter[which_eye_tracked + '_cal_status']:
             self.toolbar_run_QAction.setDisabled(True)
             self.log_QPlainTextEdit.appendPlainText('No calibration found. Please calibrate first.')
-        
+
         self.data_manager = DataManager()
         self.init_signals()
     #%% SIGNALS
@@ -849,14 +849,14 @@ class OptoSimpleSacGui(FsmGui):
                 self.toolbar_run_QAction.setDisabled(True)
                 self.toolbar_stop_QAction.setEnabled(True)
                 # Start FSM
-                self.stop_exp_Event.clear()            
+                self.stop_exp_Event.clear()
                 # Disable some user functions
                 self.sidepanel_parameter_QWidget.setDisabled(True)
                 self.tgt.setDisabled(True)
                 self.pd_tgt.setDisabled(True)
                 # Save parameters
                 self.save_QPushButton_clicked()
-                # Init. data    
+                # Init. data
                 if self.cal_parameter['which_eye_tracked'] == 'Left':
                     self.exp_parameter['right_eye_tracked'] = 0
                     self.exp_parameter['left_eye_tracked'] = 1
@@ -871,7 +871,7 @@ class OptoSimpleSacGui(FsmGui):
                 self.fsm_to_plot_priority_socket.send_pyobj(('run',0))
         else:
             self.log_QPlainTextEdit.appendPlainText('No connection with plotting computer.')
-    
+
     @pyqtSlot()
     def toolbar_stop_QAction_triggered(self):
         self.toolbar_run_QAction.setEnabled(True)
@@ -886,7 +886,7 @@ class OptoSimpleSacGui(FsmGui):
         self.stop_exp_Event.set()
         # Tell plot GUI we are stopping
         self.fsm_to_plot_priority_socket.send_pyobj(('stop',0))
-        
+
     @pyqtSlot()
     def toolbar_connect_QAction_triggered(self):
         '''
@@ -894,7 +894,7 @@ class OptoSimpleSacGui(FsmGui):
         '''
         self.receiver_QTimer.start(10)
         self.toolbar_connect_QAction.setDisabled(True)
-        
+
     @pyqtSlot()
     def data_QTimer_timeout(self):
         '''
@@ -912,9 +912,9 @@ class OptoSimpleSacGui(FsmGui):
             eye_x = self.real_time_data_Array[1]
             eye_y = self.real_time_data_Array[2]
             tgt_x = self.real_time_data_Array[3]
-            tgt_y = self.real_time_data_Array[4]        
+            tgt_y = self.real_time_data_Array[4]
         self.fsm_to_plot_socket.send_pyobj((t,eye_x,eye_y,tgt_x,tgt_y))
-    
+
     @pyqtSlot()
     def receiver_QTimer_timeout(self):
         '''
@@ -933,107 +933,107 @@ class OptoSimpleSacGui(FsmGui):
     @pyqtSlot()
     def horz_offset_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['horz_offset'] = self.horz_offset_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')     
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def vert_offset_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['vert_offset'] = self.vert_offset_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def max_allow_time_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['max_allow_time'] = self.max_allow_time_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')     
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def min_fix_time_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['min_fix_time'] = self.min_fix_time_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def max_wait_fixation_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['max_wait_for_fixation'] = self.max_wait_fixation_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')     
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def pun_time_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['pun_time'] = self.pun_time_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def time_to_reward_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['time_to_reward'] = self.time_to_reward_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')     
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def sac_detect_threshold_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['sac_detect_threshold'] = self.sac_detect_threshold_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def sac_on_off_threshold_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['sac_on_off_threshold'] = self.sac_on_off_threshold_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')     
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def rew_area_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['rew_area'] = self.rew_area_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def pursuit_amp_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['pursuit_amp'] = self.pursuit_amp_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')     
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def pursuit_dur_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['pursuit_dur'] = self.pursuit_dur_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def prim_sac_amp_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['prim_sac_amp'] = self.prim_sac_amp_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def num_sac_dir_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['num_prim_sac_dir'] = int(self.num_sac_dir_QDoubleSpinBox.value())
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def first_dir_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['first_prim_sac_dir'] = int(self.first_dir_QDoubleSpinBox.value())
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def iti_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['ITI'] = self.iti_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
-        
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+
     @pyqtSlot()
     def pump_switch_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['pump_switch_interval'] = self.pump_switch_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
-    
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+
     @pyqtSlot()
     def avg_reaction_time_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['avg_reaction_time'] = self.avg_reaction_time_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00') 
-    
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+
     @pyqtSlot()
     def stim_window_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['stim_window'] = self.stim_window_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')   
-        
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+
     @pyqtSlot()
     def stim_prob_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['stim_prob'] = self.stim_prob_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00') 
-        
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+
     @pyqtSlot()
     def stim_length_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['stim_length'] = self.stim_length_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00') 
-    
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+
     @pyqtSlot()
     def stim_waveform_QComboBox_currentTextChanged(self):
         self.exp_parameter['stim_waveform'] = self.stim_waveform_QComboBox.currentText()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00') 
-    
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+
     @pyqtSlot()
     def save_QPushButton_clicked(self):
         with open(self.parameter_file_path,'r') as file:
             all_parameter = json.load(file)
-        all_parameter[self.main_parameter['current_monkey']][self.exp_name] = self.exp_parameter    
+        all_parameter[self.main_parameter['current_monkey']][self.exp_name] = self.exp_parameter
         with open(self.parameter_file_path,'w') as file:
             json.dump(all_parameter, file, indent=4)
-        self.save_QPushButton.setStyleSheet('background-color: #39E547')  
-        
+        self.save_QPushButton.setStyleSheet('background-color: #39E547')
+
     #%% GUI
     def init_gui(self):
         # Disable plots
@@ -1041,7 +1041,7 @@ class OptoSimpleSacGui(FsmGui):
         self.plot_2_PlotWidget.deleteLater()
         # Disable pumps
         self.pump['1'].deleteLater()
-        self.pump['2'].deleteLater()   
+        self.pump['2'].deleteLater()
         # Side panel with 2 tabs, 1 for Sac Params, 1 for Stim params
         self.sidepanel_params_TabWidget = QTabWidget()
         self.sidepanel_params_1_tab_QWidget = QWidget()
@@ -1053,7 +1053,7 @@ class OptoSimpleSacGui(FsmGui):
         self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_1_tab_QWidget, 'Saccade')
         self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_2_tab_QWidget, 'Stimulation')
         self.sidepanel_custom_QVBoxLayout.addWidget(self.sidepanel_params_TabWidget)
-        
+
         # Side panel params
         self.horz_offset_QHBoxLayout = QHBoxLayout()
         self.horz_offset_QLabel = QLabel('Horizontal offset (deg):')
@@ -1065,9 +1065,9 @@ class OptoSimpleSacGui(FsmGui):
         self.horz_offset_QDoubleSpinBox.setMaximum(50)
         self.horz_offset_QDoubleSpinBox.setDecimals(1)
         self.horz_offset_QDoubleSpinBox.setSingleStep(0.1)
-        self.horz_offset_QHBoxLayout.addWidget(self.horz_offset_QDoubleSpinBox)       
+        self.horz_offset_QHBoxLayout.addWidget(self.horz_offset_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.horz_offset_QHBoxLayout)
-        
+
         self.vert_offset_QHBoxLayout = QHBoxLayout()
         self.vert_offset_QLabel = QLabel('Vertical offset (deg):')
         self.vert_offset_QLabel.setAlignment(Qt.AlignRight)
@@ -1078,9 +1078,9 @@ class OptoSimpleSacGui(FsmGui):
         self.vert_offset_QDoubleSpinBox.setMaximum(50)
         self.vert_offset_QDoubleSpinBox.setDecimals(1)
         self.vert_offset_QDoubleSpinBox.setSingleStep(0.1)
-        self.vert_offset_QHBoxLayout.addWidget(self.vert_offset_QDoubleSpinBox)       
+        self.vert_offset_QHBoxLayout.addWidget(self.vert_offset_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.vert_offset_QHBoxLayout)
-        
+
         self.max_allow_time_QHBoxLayout = QHBoxLayout()
         self.max_allow_time_QLabel = QLabel("Max. allowed time outside target (s):")
         self.max_allow_time_QLabel.setAlignment(Qt.AlignRight)
@@ -1092,7 +1092,7 @@ class OptoSimpleSacGui(FsmGui):
         self.max_allow_time_QDoubleSpinBox.setDecimals(1)
         self.max_allow_time_QHBoxLayout.addWidget(self.max_allow_time_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.max_allow_time_QHBoxLayout)
-        
+
         self.min_fix_time_QHBoxLayout = QHBoxLayout()
         self.min_fix_time_QLabel = QLabel("Minimum fixation time (s):")
         self.min_fix_time_QLabel.setAlignment(Qt.AlignRight)
@@ -1104,7 +1104,7 @@ class OptoSimpleSacGui(FsmGui):
         self.min_fix_time_QDoubleSpinBox.setDecimals(1)
         self.min_fix_time_QHBoxLayout.addWidget(self.min_fix_time_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.min_fix_time_QHBoxLayout)
-        
+
         self.max_wait_fixation_QHBoxLayout = QHBoxLayout()
         self.max_wait_fixation_QLabel = QLabel("Maximum wait for fixation (s):")
         self.max_wait_fixation_QLabel.setAlignment(Qt.AlignRight)
@@ -1116,7 +1116,7 @@ class OptoSimpleSacGui(FsmGui):
         self.max_wait_fixation_QDoubleSpinBox.setDecimals(1)
         self.max_wait_fixation_QHBoxLayout.addWidget(self.max_wait_fixation_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.max_wait_fixation_QHBoxLayout)
-        
+
         self.pun_time_QHBoxLayout = QHBoxLayout()
         self.pun_time_QLabel = QLabel("Punishment time (s):")
         self.pun_time_QLabel.setAlignment(Qt.AlignRight)
@@ -1128,7 +1128,7 @@ class OptoSimpleSacGui(FsmGui):
         self.pun_time_QDoubleSpinBox.setDecimals(1)
         self.pun_time_QHBoxLayout.addWidget(self.pun_time_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pun_time_QHBoxLayout)
-        
+
         self.time_to_reward_QHBoxLayout = QHBoxLayout()
         self.time_to_reward_QLabel = QLabel("Time to reward (s):")
         self.time_to_reward_QLabel.setAlignment(Qt.AlignRight)
@@ -1140,7 +1140,7 @@ class OptoSimpleSacGui(FsmGui):
         self.time_to_reward_QDoubleSpinBox.setDecimals(1)
         self.time_to_reward_QHBoxLayout.addWidget(self.time_to_reward_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.time_to_reward_QHBoxLayout)
-        
+
         self.sac_detect_threshold_QHBoxLayout = QHBoxLayout()
         self.sac_detect_threshold_QLabel = QLabel("Saccade detection threshold (deg/s):")
         self.sac_detect_threshold_QLabel.setAlignment(Qt.AlignRight)
@@ -1152,7 +1152,7 @@ class OptoSimpleSacGui(FsmGui):
         self.sac_detect_threshold_QDoubleSpinBox.setDecimals(0)
         self.sac_detect_threshold_QHBoxLayout.addWidget(self.sac_detect_threshold_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.sac_detect_threshold_QHBoxLayout)
-        
+
         self.sac_on_off_threshold_QHBoxLayout = QHBoxLayout()
         self.sac_on_off_threshold_QLabel = QLabel("Saccade onset/offset threshold (deg/s):")
         self.sac_on_off_threshold_QLabel.setAlignment(Qt.AlignRight)
@@ -1164,7 +1164,7 @@ class OptoSimpleSacGui(FsmGui):
         self.sac_on_off_threshold_QDoubleSpinBox.setDecimals(0)
         self.sac_on_off_threshold_QHBoxLayout.addWidget(self.sac_on_off_threshold_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.sac_on_off_threshold_QHBoxLayout)
-        
+
         self.rew_area_QHBoxLayout = QHBoxLayout()
         self.rew_area_QLabel = QLabel("Reward area (deg):")
         self.rew_area_QLabel.setAlignment(Qt.AlignRight)
@@ -1176,7 +1176,7 @@ class OptoSimpleSacGui(FsmGui):
         self.rew_area_QDoubleSpinBox.setDecimals(1)
         self.rew_area_QHBoxLayout.addWidget(self.rew_area_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.rew_area_QHBoxLayout)
-        
+
         self.pursuit_amp_QHBoxLayout = QHBoxLayout()
         self.pursuit_amp_QLabel = QLabel("Pursuit amp. (deg):")
         self.pursuit_amp_QLabel.setAlignment(Qt.AlignRight)
@@ -1188,7 +1188,7 @@ class OptoSimpleSacGui(FsmGui):
         self.pursuit_amp_QDoubleSpinBox.setDecimals(1)
         self.pursuit_amp_QHBoxLayout.addWidget(self.pursuit_amp_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pursuit_amp_QHBoxLayout)
-        
+
         self.pursuit_dur_QHBoxLayout = QHBoxLayout()
         self.pursuit_dur_QLabel = QLabel("Pursuit duration (s):")
         self.pursuit_dur_QLabel.setAlignment(Qt.AlignRight)
@@ -1200,7 +1200,7 @@ class OptoSimpleSacGui(FsmGui):
         self.pursuit_dur_QDoubleSpinBox.setDecimals(1)
         self.pursuit_dur_QHBoxLayout.addWidget(self.pursuit_dur_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pursuit_dur_QHBoxLayout)
-        
+
         self.prim_sac_amp_QHBoxLayout = QHBoxLayout()
         self.prim_sac_amp_QLabel = QLabel("Primary saccade amp. (deg):")
         self.prim_sac_amp_QLabel.setAlignment(Qt.AlignRight)
@@ -1212,7 +1212,7 @@ class OptoSimpleSacGui(FsmGui):
         self.prim_sac_amp_QDoubleSpinBox.setDecimals(1)
         self.prim_sac_amp_QHBoxLayout.addWidget(self.prim_sac_amp_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.prim_sac_amp_QHBoxLayout)
-        
+
         self.num_sac_dir_QHBoxLayout = QHBoxLayout()
         self.num_sac_dir_QLabel = QLabel("Number of sac. direction:")
         self.num_sac_dir_QLabel.setAlignment(Qt.AlignRight)
@@ -1225,7 +1225,7 @@ class OptoSimpleSacGui(FsmGui):
         self.num_sac_dir_QDoubleSpinBox.setDecimals(0)
         self.num_sac_dir_QHBoxLayout.addWidget(self.num_sac_dir_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.num_sac_dir_QHBoxLayout)
-        
+
         self.first_dir_QHBoxLayout = QHBoxLayout()
         self.first_dir_QLabel = QLabel("1st direction (deg):")
         self.first_dir_QLabel.setAlignment(Qt.AlignRight)
@@ -1238,7 +1238,7 @@ class OptoSimpleSacGui(FsmGui):
         self.first_dir_QDoubleSpinBox.setDecimals(0)
         self.first_dir_QHBoxLayout.addWidget(self.first_dir_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.first_dir_QHBoxLayout)
-        
+
         self.iti_QHBoxLayout = QHBoxLayout()
         self.iti_QLabel = QLabel("ITI (s):")
         self.iti_QLabel.setAlignment(Qt.AlignRight)
@@ -1250,7 +1250,7 @@ class OptoSimpleSacGui(FsmGui):
         self.iti_QDoubleSpinBox.setDecimals(1)
         self.iti_QHBoxLayout.addWidget(self.iti_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.iti_QHBoxLayout)
-        
+
         self.pump_switch_QHBoxLayout = QHBoxLayout()
         self.pump_switch_QLabel = QLabel("Pump switch interval (trials):")
         self.pump_switch_QLabel.setAlignment(Qt.AlignRight)
@@ -1263,7 +1263,7 @@ class OptoSimpleSacGui(FsmGui):
         self.pump_switch_QDoubleSpinBox.setDecimals(0)
         self.pump_switch_QHBoxLayout.addWidget(self.pump_switch_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pump_switch_QHBoxLayout)
-        
+
         self.avg_reaction_time_QHBoxLayout = QHBoxLayout()
         self.avg_reaction_time_QLabel = QLabel('Average Reaction Time (ms):')
         self.avg_reaction_time_QHBoxLayout.addWidget(self.avg_reaction_time_QLabel)
@@ -1274,9 +1274,9 @@ class OptoSimpleSacGui(FsmGui):
         self.avg_reaction_time_QDoubleSpinBox.setMaximum(250)
         self.avg_reaction_time_QDoubleSpinBox.setDecimals(0)
         self.avg_reaction_time_QDoubleSpinBox.setSingleStep(1)
-        self.avg_reaction_time_QHBoxLayout.addWidget(self.avg_reaction_time_QDoubleSpinBox)       
+        self.avg_reaction_time_QHBoxLayout.addWidget(self.avg_reaction_time_QDoubleSpinBox)
         self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.avg_reaction_time_QHBoxLayout)
-        
+
         self.stim_window_QHBoxLayout = QHBoxLayout()
         self.stim_window_QLabel = QLabel('Stimulation Window (ms):')
         self.stim_window_QHBoxLayout.addWidget(self.stim_window_QLabel)
@@ -1287,9 +1287,9 @@ class OptoSimpleSacGui(FsmGui):
         self.stim_window_QDoubleSpinBox.setMaximum(100)
         self.stim_window_QDoubleSpinBox.setDecimals(0)
         self.stim_window_QDoubleSpinBox.setSingleStep(1)
-        self.stim_window_QHBoxLayout.addWidget(self.stim_window_QDoubleSpinBox)       
+        self.stim_window_QHBoxLayout.addWidget(self.stim_window_QDoubleSpinBox)
         self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.stim_window_QHBoxLayout)
-        
+
         self.stim_prob_QHBoxLayout = QHBoxLayout()
         self.stim_prob_QLabel = QLabel('Stimulation Probablility:')
         self.stim_prob_QHBoxLayout.addWidget(self.stim_prob_QLabel)
@@ -1300,9 +1300,9 @@ class OptoSimpleSacGui(FsmGui):
         self.stim_prob_QDoubleSpinBox.setMaximum(1)
         self.stim_prob_QDoubleSpinBox.setDecimals(2)
         self.stim_prob_QDoubleSpinBox.setSingleStep(0.05)
-        self.stim_prob_QHBoxLayout.addWidget(self.stim_prob_QDoubleSpinBox)       
+        self.stim_prob_QHBoxLayout.addWidget(self.stim_prob_QDoubleSpinBox)
         self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.stim_prob_QHBoxLayout)
-        
+
         self.stim_length_QHBoxLayout = QHBoxLayout()
         self.stim_length_QLabel = QLabel('Stimulation Length (ms):')
         self.stim_length_QHBoxLayout.addWidget(self.stim_length_QLabel)
@@ -1313,9 +1313,9 @@ class OptoSimpleSacGui(FsmGui):
         self.stim_length_QDoubleSpinBox.setMaximum(100)
         self.stim_length_QDoubleSpinBox.setDecimals(1)
         self.stim_length_QDoubleSpinBox.setSingleStep(0.5)
-        self.stim_length_QHBoxLayout.addWidget(self.stim_length_QDoubleSpinBox)       
+        self.stim_length_QHBoxLayout.addWidget(self.stim_length_QDoubleSpinBox)
         self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.stim_length_QHBoxLayout)
-        
+
         self.stim_waveform_QHBoxLayout = QHBoxLayout()
         self.stim_waveform_QHBoxLayout.setAlignment(Qt.AlignTop)
         self.stim_waveform_QLabel = QLabel('Stimulation Waveform:')
@@ -1326,10 +1326,10 @@ class OptoSimpleSacGui(FsmGui):
         self.stim_waveform_QComboBox.addItem('Square')
         # self.stim_waveform_QComboBox.addItem('Ramp')
         self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.stim_waveform_QHBoxLayout)
-        
+
         self.save_QPushButton = QPushButton('Save parameters')
         self.sidepanel_custom_QVBoxLayout.addWidget(self.save_QPushButton)
-    #%% FUNCTIONS    
+    #%% FUNCTIONS
     def set_default_parameter(self):
         parameter = {
                     'horz_offset':0.0,
@@ -1356,7 +1356,7 @@ class OptoSimpleSacGui(FsmGui):
                     'stim_waveform':'square'
                     }
         return parameter
-    
+
     def update_parameter(self):
         '''
         update GUI parameters with the loaded parameters
@@ -1394,7 +1394,7 @@ class OptoSimpleSacGuiProcess(multiprocessing.Process):
         self.real_time_data_Array = real_time_data_Array
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.main_parameter = main_parameter
-    def run(self):  
+    def run(self):
         app = QApplication(sys.argv)
         app_gui = OptoSimpleSacGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array, self.main_parameter)
         app_gui.setWindowIcon(QtGui.QIcon(os.path.join('.', 'icon', 'experiment_window.png')))
