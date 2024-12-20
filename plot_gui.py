@@ -118,6 +118,7 @@ class PlotGui(FsmGui):
                 open_ephys_msg = f'StartRecord RecordNode=1 CreateNewDir=1 RecDir={self.data_path_QLineEdit.text()}'
                 self.open_ephys_socket.send_string(open_ephys_msg)
                 self.open_ephys_socket.recv()
+                self.open_ephys_started = True
             except Exception as error:
                 self.log_QPlainTextEdit.appendPlainText('Error in controlling Open Ephys.')
                 self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
@@ -135,13 +136,15 @@ class PlotGui(FsmGui):
         # Check to see if FSM process ready
         self.plot_to_fsm_socket.send_pyobj(('confirm_connection',0))
         # Wait for confirmation for 5 sec.
-        if self.fsm_to_plot_priority_poller.poll(2000):
+        if self.fsm_to_plot_priority_poller.poll(5000):
             msg = self.fsm_to_plot_priority_socket.recv_pyobj(flags=zmq.NOBLOCK)
+            # print(msg)
             if msg[0] == 0:
                 self.toolbar_run_QAction.setDisabled(True)
                 self.toolbar_stop_QAction.setEnabled(True)
                 # Start FSM
                 self.plot_to_fsm_socket.send_pyobj(('run',0))
+                # print('2')
                 # Reset data
                 self.eye_x_data.clear()
                 self.eye_y_data.clear()
@@ -161,7 +164,6 @@ class PlotGui(FsmGui):
                 self.open_ephys_socket.send_string(open_ephys_msg)
                 self.open_ephys_socket.recv()
                 # Find the latest recording folder and rename subfolder to 'raw_data'
-                rec_dir = self.data_path_QLineEdit.text()
                 recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
                 os.rename(os.path.join(recent_rec_dir,os.listdir(recent_rec_dir)[0]), os.path.join(recent_rec_dir,'raw_data'))
                 self.open_ephys_started = False
@@ -182,10 +184,12 @@ class PlotGui(FsmGui):
         # If controlling Open Ephys, copy the behavior files to Open Ephys folder
         if self.open_ephys_connected:
             try:
+                print(recent_rec_dir)
                 self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
                 self.open_ephys_socket.recv()
                 shutil.copy(os.path.join(self.data_manager.data_file_path +'.hdf5'),os.path.join(recent_rec_dir,'raw_data')) # rec. path from above
                 shutil.copy(os.path.join(self.data_manager.data_file_path +'.mat'),os.path.join(recent_rec_dir,'raw_data'))
+                print('saved')
             except Exception as error:
                 self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
         # Enable file path search
@@ -271,6 +275,7 @@ class PlotGui(FsmGui):
                 _, exp_name, exp_parameter = msg
                 self.data_manager.init_data(exp_name,exp_parameter)
             if msg_title == 'run':
+                # print('1')
                 self.toolbar_run_QAction.setDisabled(True)
                 self.toolbar_stop_QAction.setEnabled(True)
                 # Control Open Ephys
@@ -279,6 +284,7 @@ class PlotGui(FsmGui):
                         open_ephys_msg = f'StartRecord RecordNode=1 CreateNewDir=1 RecDir={self.data_path_QLineEdit.text()}'
                         self.open_ephys_socket.send_string(open_ephys_msg)
                         self.open_ephys_socket.recv()
+                        self.open_ephys_started = True
                     except Exception as error:
                         self.log_QPlainTextEdit.appendPlainText('Error in controlling Open Ephys.')
                         self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
@@ -297,15 +303,18 @@ class PlotGui(FsmGui):
             if msg_title == 'stop':
                 self.toolbar_run_QAction.setEnabled(True)
                 self.toolbar_stop_QAction.setDisabled(True)
+
                 #stop open Ephys
                 if self.open_ephys_started:
                     try:
+                        print('2')
                         open_ephys_msg = 'StopRecord'
                         self.open_ephys_socket.send_string(open_ephys_msg)
                         self.open_ephys_socket.recv()
                         # Find the latest recording folder and rename subfolder to 'raw_data'
                         rec_dir = self.data_path_QLineEdit.text()
                         recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
+                        print(recent_rec_dir)
                         os.rename(os.path.join(recent_rec_dir,os.listdir(recent_rec_dir)[0]), os.path.join(recent_rec_dir,'raw_data'))
                         self.open_ephys_started = False
                     except:
@@ -325,6 +334,9 @@ class PlotGui(FsmGui):
                     try:
                         self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
                         self.open_ephys_socket.recv()
+                        # Find the latest recording folder and rename subfolder to 'raw_data'
+                        rec_dir = self.data_path_QLineEdit.text()
+                        recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
                         shutil.copy(os.path.join(self.data_manager.data_file_path +'.hdf5'),os.path.join(recent_rec_dir,'raw_data')) # rec. path from above
                         shutil.copy(os.path.join(self.data_manager.data_file_path +'.mat'),os.path.join(recent_rec_dir,'raw_data'))
                     except Exception as error:
@@ -332,6 +344,7 @@ class PlotGui(FsmGui):
                 
                 # Enable file path search
                 self.data_path_QPushButton.setEnabled(True)
+                self.plot_to_fsm_socket.send_pyobj((0,0))
 
     @pyqtSlot()
     def data_path_QPushButton_clicked(self):
