@@ -337,10 +337,13 @@ class PlotGui(FsmGui):
                         shutil.copy(os.path.join(self.data_manager.data_file_path +'.mat'),os.path.join(recent_rec_dir,'raw_data'))
                     except Exception as error:
                         self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
+                self.toolbar_run_QAction.setEnabled(True)
+                self.toolbar_stop_QAction.setDisabled(True)
                 print('3\n')
                 # Enable file path search
                 self.data_path_QPushButton.setEnabled(True)
                 print('4\n')
+
     @pyqtSlot()
     def data_path_QPushButton_clicked(self):
         if self.data_path_QFileDialog.exec_():
