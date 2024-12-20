@@ -182,6 +182,9 @@ class PlotGui(FsmGui):
         # Convert the data of the current recording
         self.data_manager.convert_data()
         print('4n\n')
+        # Enable file path search
+        self.data_path_QPushButton.setEnabled(True)
+        print('5n\n')
 
         # If controlling Open Ephys, copy the behavior files to Open Ephys folder
         if self.open_ephys_connected:
@@ -301,7 +304,6 @@ class PlotGui(FsmGui):
                 # Disable file path search
                 self.data_path_QPushButton.setDisabled(True)
             if msg_title == 'stop':
-                print('1\n')
                 self.toolbar_run_QAction.setEnabled(True)
                 self.toolbar_stop_QAction.setDisabled(True)
                 #stop open Ephys
@@ -317,7 +319,6 @@ class PlotGui(FsmGui):
                         self.open_ephys_started = False
                     except:
                         self.log_QPlainTextEdit.appendPlainText('Error in controlling Open Ephys')
-                print('2\n')
                 # stop spikeGLX
                 if self.spike_glx_started == True:
                     self.spike_glx.stop_recording()
@@ -337,12 +338,9 @@ class PlotGui(FsmGui):
                         shutil.copy(os.path.join(self.data_manager.data_file_path +'.mat'),os.path.join(recent_rec_dir,'raw_data'))
                     except Exception as error:
                         self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
-                self.toolbar_run_QAction.setEnabled(True)
-                self.toolbar_stop_QAction.setDisabled(True)
-                print('3\n')
+                
                 # Enable file path search
                 self.data_path_QPushButton.setEnabled(True)
-                print('4\n')
 
     @pyqtSlot()
     def data_path_QPushButton_clicked(self):
