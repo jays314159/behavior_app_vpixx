@@ -125,7 +125,7 @@ class PlotGui(FsmGui):
                     self.log_QPlainTextEdit.appendPlainText('Error in controlling Open Ephys.')
                     self.log_QPlainTextEdit.appendPlainText(str(error) + '.')
             # control spikeGLX
-            else
+            else:
                try:
                     self.log_QPlainTextEdit.appendPlainText('Attempting to start SpikeGLX...')
                     if self.spike_glx.connect():
@@ -304,7 +304,6 @@ class PlotGui(FsmGui):
                 self.data_path_QPushButton.setDisabled(True)
             if msg_title == 'stop':
                 if self.flag_stop != 1:
-                    print('1')
                     self.toolbar_run_QAction.setEnabled(True)
                     self.toolbar_stop_QAction.setDisabled(True)
 
