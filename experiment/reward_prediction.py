@@ -928,7 +928,7 @@ class RwdPredFsmProcess(multiprocessing.Process):
                     'high_rew_amt':0.03,
                     'rew_tgt_size': 2.0
                     }
-        return parameter    
+        return parameter
 class RwdPredGui(FsmGui):
     def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array,main_parameter):        
         self.exp_name = exp_name
