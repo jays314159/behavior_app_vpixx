@@ -662,7 +662,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
         '''
         # print('pull data')
         tpxData = TPxReadTPxData(0)
-        self.trial_data['vpixx_time_data'].extend(tpxData[0][0::22])
+        self.trial_data['device_time_data'].extend(tpxData[0][0::22])
         self.trial_data['eye_lx_raw_data'].extend(tpxData[0][16::22])
         self.trial_data['eye_ly_raw_data'].extend(tpxData[0][17::22])
         self.trial_data['eye_l_pupil_data'].extend(tpxData[0][3::22])
@@ -730,7 +730,7 @@ class OptoSimpleSacFsmProcess(multiprocessing.Process):
         self.trial_data['eye_ry_raw_data'] = []
         self.trial_data['eye_r_pupil_data'] = []
         self.trial_data['eye_r_blink_data'] = []
-        self.trial_data['vpixx_time_data'] = []
+        self.trial_data['device_time_data'] = []
         self.trial_data['din_data'] = []
         self.trial_data['dout_data'] = []
         
