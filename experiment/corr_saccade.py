@@ -918,7 +918,7 @@ class CorrSacGui(FsmGui):
         # Disable pumps
         self.pump_1.deleteLater()
         self.pump_2.deleteLater()
-        # Side panel tabs for extra params.
+        # Side panel tabs for extra params.   
         self.sidepanel_params_TabWidget= QTabWidget()
         self.sidepanel_params_1_tab_QWidget = QWidget()
         self.sidepanel_params_1_tab_QVBoxLayout = QVBoxLayout()
