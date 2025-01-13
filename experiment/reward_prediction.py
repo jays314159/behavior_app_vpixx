@@ -1,33 +1,37 @@
 """
 Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
 @author: Jay Pi <jay.s.314159@gmail.com>
+Modified by Jafar Doostmohammadi
 """
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxLayout, QDoubleSpinBox, QCheckBox, QPlainTextEdit,\
                             QDialog, QShortcut, QTabWidget, QWidget, QVBoxLayout
-from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
+from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject, Qt, QTimer, QThread, QThreadPool
 from psychopy import monitors, visual, core
+
+
 
 # VPixx related
 from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxSelectDevice,DPxUpdateRegCache, DPxSetTPxAwake,\
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetDoutValue, TPxReadTPxData,\
                               DPxSetTPxSleep, DPxClose
-
+                      
 from fsm_gui import FsmGui
 from target import TargetWidget
 import app_lib as lib
 from data_manager import DataManager
 
-import multiprocessing, sys, os, json, random, time, copy, ctypes, traceback, gc, zmq, math
+import multiprocessing, sys, os, json, random, time, copy, ctypes, traceback, gc, zmq, math, queue
 sys.path.append('../app')
 from pathlib import Path
 import numpy as np
 from collections import deque
-from datetime import datetime
+from datetime import datetime, date
+from threading import Event, Lock
 
-class CorrSacFsmProcess(multiprocessing.Process):
-    def __init__(self,exp_name, fsm_to_gui_sndr, gui_to_fsm_Q, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array,main_parameter,mon_parameter):
+class RwdPredFsmProcess(multiprocessing.Process):
+    def __init__(self,exp_name, fsm_to_gui_sndr, gui_to_fsm_Q, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, main_parameter, mon_parameter):
         super().__init__()
         self.exp_name = exp_name
         self.fsm_to_gui_sndr = fsm_to_gui_sndr
@@ -42,14 +46,31 @@ class CorrSacFsmProcess(multiprocessing.Process):
         self.eye_y = 0
         self.tgt_x = 0
         self.tgt_y = 0
+        self.tgt_x_high = 0
+        self.tgt_y_high = 0
+        self.tgt_x_low  = 0
+        self.tgt_y_low  = 0
+        self.tgt_center_x = 0
+        self.tgt_center_y = 0
         self.start_x = 0
         self.start_y = 0
         self.cue_x = 0
         self.cue_y = 0
+        self.cue_x_low_rew = 0 
+        self.cue_y_low_rew = 0 
+        self.cue_x_high_rew = 0 
+        self.cue_y_high_rew = 0 
+        self.high_low_percentage = 0
         self.t = math.nan
         self.pull_data_t = 0 # keep track of when data was pulled last from VPixx
-    
+        self.num_rew_tgt = 1 # number of reward targets per condition
+        
     def run(self):
+        # import faulthandler
+        # faulthandler.disable()
+        # faulthandler.enable()
+        # gc.disable()
+        
         # Set up exp. screen
         this_monitor = monitors.Monitor(self.mon_parameter['monitor_name'], width=self.mon_parameter['monitor_width'], distance=self.mon_parameter['monitor_distance'])
         this_monitor.save()
@@ -57,10 +78,18 @@ class CorrSacFsmProcess(multiprocessing.Process):
         self.window = visual.Window(size=self.mon_parameter['monitor_size'],screen=self.mon_parameter['monitor_num'], allowGUI=False, color='white', monitor=this_monitor,
                                 units='deg', winType='pyglet', fullscr=True, checkTiming=False, waitBlanking=True)
         self.window.flip()
-        
         # Make targets
         self.update_target()
-        
+      
+        '''        
+        # Init. EyeLink worker
+        try:
+            eyelink_worker = EyelinkWorker()
+            eye_tracker = eyelink_worker.setup()
+        except Exception as error:
+            self.fsm_to_gui_sndr.send(('log', 'Error in initializing EyeLink...'))
+            self.fsm_to_gui_sndr.send(('log',error))
+        '''
         # Check if VPixx available; if so, open
         DPxOpen()
         tracker.TRACKPixx3().open() # this throws error if not device not open           
@@ -70,29 +99,29 @@ class CorrSacFsmProcess(multiprocessing.Process):
         
         # Get pointers to store data from device
         cal_data, raw_data = lib.VPixx_get_pointers_for_data()
-             
+        
         # Init. var.
         random_signal_flip_duration = 0.015 # in sec., how often to flip random signal
         bitMask = 0xffffff # for VPixx digital out, in hex bit
         DPxSetDoutValue(0, bitMask)
-        DPxUpdateRegCache()
+        DPxUpdateRegCache()       
         
         run_exp = False
         # Process loop
         while not self.stop_fsm_process_Event.is_set():
-            if not self.stop_exp_Event.is_set():
+            # Starting experiment
+            if not self.stop_exp_Event.is_set():            
                 # Turn on VPixx schedule; this needed to collect data
                 lib.VPixx_turn_on_schedule()
                 # Update targets
                 self.update_target()
                 # Load exp parameter
-                fsm_parameter, parameter_file_path = lib.load_parameter('experiment','exp_parameter.json',True,True,CorrSacGui.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
-                cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])  
+                fsm_parameter, parameter_file_path = lib.load_parameter('experiment','exp_parameter.json',True,True,RwdPredGui.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
+                cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])        
                 # Create target list
                 target_pos_list = lib.make_corr_target(fsm_parameter)
                 num_tgt_pos = len(target_pos_list)
                 # Init. var
-                DPxUpdateRegCache()
                 self.t = DPxGetTime()
                 self.pull_data_t = self.t
                 random_signal_t = self.t
@@ -117,9 +146,11 @@ class CorrSacFsmProcess(multiprocessing.Process):
                 run_exp = True        
             # Trial loop
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
-                if self.stop_exp_Event.is_set():
+                if self.stop_exp_Event.is_set():      
                     run_exp = False
                     self.t = math.nan
+                    # # Save current trial data
+                    # self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                     # Turn off VPixx schedule
                     lib.VPixx_turn_off_schedule()
                     # Remove all targets
@@ -136,10 +167,14 @@ class CorrSacFsmProcess(multiprocessing.Process):
                     if self.stop_exp_Event.is_set():
                         run_exp = False
                         self.t = math.nan
+                        # # Save current trial data
+                        # self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
+                        # Close EyeLink host PC file
                         # Turn off VPixx schedule
                         lib.VPixx_turn_off_schedule()
                         # Remove all targets
-                        self.window.flip()
+                        self.window.flip()                        
+
                         break
                     # Send random signal for alignment
                     if (self.t - random_signal_t) > random_signal_flip_duration:
@@ -156,6 +191,37 @@ class CorrSacFsmProcess(multiprocessing.Process):
                     eye_status = DPxGetReg16(0x59A)
                     right_eye_blink = bool(eye_status & (1 << 0)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
                     left_eye_blink = bool(eye_status & (1 << 1)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
+                        # if eye_data is not None:
+                        #     if eye_data.getTime() != old_t:
+                        #         new_data_received = True
+                                
+                        #         old_t = eye_data.getTime()
+                        #         self.t = old_t/1000   
+                        #         # Left eye sample
+                        #         raw_eye_left = eye_data.getLeftEye()
+                        #         raw_eye_pos_left = raw_eye_left.getRawPupil()
+                        #         raw_eye_pupil_left = raw_eye_left.getPupilSize()
+                        #         left_eye_blink = (int(raw_eye_pos_left[0]) == -32768) # if -32768, blink or data missing
+                                
+                        #         # Right eye sample
+                        #         raw_eye_right = eye_data.getRightEye()
+                        #         raw_eye_pos_right = raw_eye_right.getRawPupil()
+                        #         raw_eye_pupil_right = raw_eye_right.getPupilSize()
+                        #         right_eye_blink = (raw_eye_pos_right[0] == -32768)
+                                
+                    # # Append realtime data
+                    # self.trial_data['tgt_time_data'].append(self.t)
+                    # self.trial_data['tgt_x_data'].append(self.tgt_x)
+                    # self.trial_data['tgt_y_data'].append(self.tgt_y)
+                    # self.trial_data['eye_x_data'].append(self.eye_x)
+                    # self.trial_data['eye_y_data'].append(self.eye_y)
+                    # self.trial_data['tgt_x_high_data'].append(self.tgt_x_high)
+                    # self.trial_data['tgt_y_high_data'].append(self.tgt_y_high)
+                    # self.trial_data['tgt_x_low_data'].append(self.tgt_x_low)
+                    # self.trial_data['tgt_y_low_data'].append(self.tgt_y_low)
+                    # self.trial_data['tgt_center_x_data'].append(self.tgt_center_x)
+                    # self.trial_data['tgt_center_y_data'].append(self.tgt_center_y)
+                                
                     if cal_parameter['which_eye_tracked'] == 'Right':
                         if not right_eye_blink:
                             eye_blink = False
@@ -196,7 +262,6 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.eye_y = 9999 
                     
                     if state == 'INIT':                     
-                        # print('state = INIT')               
                         # Set trial parameters
                         tgt_idx = random.randint(0,num_tgt_pos-1) # Randomly pick target
                         start_pos = (fsm_parameter['horz_offset'], fsm_parameter['vert_offset'])
@@ -215,6 +280,58 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         self.end_y = end_pos[1]
                         self.trial_data['end_x'].append(self.end_x)
                         self.trial_data['end_y'].append(self.end_y)
+                        # Pick tgt condition
+                        stim_rnd = random.randint(1, 100)
+                        if stim_rnd <= fsm_parameter['high_low_percentage']:
+                             tgt_cond = 'h'
+                        else:
+                             tgt_cond = 'l'
+                        # tgt_cond = random.choice(['h','l'])
+                        self.trial_data['tgt_cond'].append(tgt_cond.encode(encoding='UTF-8'))
+                        # Pick tgt num
+                        tgt_num = random.randint(0,self.num_rew_tgt-1) # for forced condition
+                        self.trial_data['tgt_num'].append(tgt_num)
+                        
+                        # Pick reward condition
+                        rew_idx = random.randint(1, 100)
+                        rew_prob = 60
+                        if (rew_idx <= rew_prob) and (tgt_cond == 'h'):
+                           rew_cond = 'h'
+                        elif (rew_idx > rew_prob) and (tgt_cond == 'h'):
+                            rew_cond = 'l'
+                        elif (rew_idx <= rew_prob) and (tgt_cond == 'l'):
+                            rew_cond = 'l' 
+                        elif (rew_idx > rew_prob) and (tgt_cond == 'l'):
+                            rew_cond = 'h'    
+                        # rew_cond = random.choice(['h','l'])
+                        
+                        self.trial_data['rew_cond'].append(rew_cond.encode(encoding='UTF-8'))
+                        # Pick jump condition
+                        jump_cond = random.choice(['y','n'])
+                        self.trial_data['jump_cond'].append(jump_cond.encode(encoding='UTF-8'))
+                        
+                        high_rew_tgt_num = random.randint(0,self.num_rew_tgt-1) # for choice condition
+                        self.trial_data['high_rew_tgt_num'].append(high_rew_tgt_num)
+                        low_rew_tgt_num = random.randint(0,self.num_rew_tgt-1)
+                        self.trial_data['low_rew_tgt_num'].append(low_rew_tgt_num)
+                        # Pick task condition: forced vs. choice
+                        rand_num = random.randint(1,100)
+                        if rand_num <= fsm_parameter['forced_trial_percentage']:
+                            task_cond = 'forced'
+                        else:
+                            task_cond = 'choice'
+                        self.trial_data['task_cond'].append(task_cond.encode(encoding='UTF-8'))
+                        cue_pos_opp = -1*np.array(target_pos_list[tgt_idx]['prim_tgt_pos']) + np.array(start_pos)
+                        # set the position of low and high stimuli
+                        self.cue_x_low_rew = cue_pos[0]
+                        self.cue_y_low_rew = cue_pos[1]
+                        self.cue_x_high_rew = cue_pos_opp[0]
+                        self.cue_y_high_rew = cue_pos_opp[1]
+                        
+                        self.trial_data['cue_x_low_rew'].append(self.cue_x_low_rew)
+                        self.trial_data['cue_y_low_rew'].append(self.cue_y_low_rew)
+                        self.trial_data['cue_x_high_rew'].append(self.cue_x_high_rew)
+                        self.trial_data['cue_y_high_rew'].append(self.cue_y_high_rew)
                         # Send target data
                         self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y,self.end_x,self.end_y)))
                         pursuit_angle = np.random.randint(0,360)
@@ -238,9 +355,17 @@ class CorrSacFsmProcess(multiprocessing.Process):
                     
                     if state == 'STR_TARGET_PURSUIT':
                         pursuit_x = pursuit_v_x*(self.t-state_start_time) + pursuit_start_x
-                        pursuit_y = pursuit_v_y*(self.t-state_start_time) + pursuit_start_y  
+                        pursuit_y = pursuit_v_y*(self.t-state_start_time) + pursuit_start_y
+                        
                         self.tgt_x = pursuit_x
                         self.tgt_y = pursuit_y
+                        self.tgt_x_high = 9999
+                        self.tgt_y_high = 9999
+                        self.tgt_x_low  = 9999
+                        self.tgt_y_low  = 9999
+                        self.tgt_center_x = self.start_x
+                        self.tgt_center_y = self.start_y
+                        
                         self.tgt.pos = (self.tgt_x,self.tgt_y)
                         self.tgt.draw()
                         self.pd_tgt.draw()
@@ -256,9 +381,10 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip()                     
+                        # Every few seconds, send data to be saved
                         if self.t - self.pull_data_t > 5:
                             self.pull_data_t = self.t
-                            self.pull_data()    
+                            self.pull_data()
                             # Send trial data to GUI
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             self.init_trial_data()
@@ -267,6 +393,13 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         if not eye_blink:
                             self.tgt_x = self.start_x
                             self.tgt_y = self.start_y
+                            self.tgt_x_high = 9999
+                            self.tgt_y_high = 9999
+                            self.tgt_x_low  = 9999
+                            self.tgt_y_low  = 9999
+                            self.tgt_center_x = self.start_x
+                            self.tgt_center_y = self.start_y
+                            
                             self.tgt.pos = (self.tgt_x,self.tgt_y)
                             self.tgt.draw()
                             self.window.flip()
@@ -296,9 +429,34 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_cue_tgt_present'].append(self.t)
                             self.tgt_x = self.cue_x
-                            self.tgt_y = self.cue_y
-                            self.tgt.pos = (self.tgt_x,self.tgt_y)                   
-                            self.tgt.draw()
+                            self.tgt_y = self.cue_y 
+                            self.tgt_center_x = 9999
+                            self.tgt_center_y = 9999
+                            
+                            if task_cond == 'forced':
+                                if tgt_cond == 'h':
+                                    self.tgt_x_high = self.cue_x_high_rew
+                                    self.tgt_y_high = self.cue_y_high_rew
+                                    self.tgt_x_low  = 9999
+                                    self.tgt_y_low  = 9999
+                                else:
+                                    self.tgt_x_high = 9999
+                                    self.tgt_y_high = 9999
+                                    self.tgt_x_low  = self.cue_x_low_rew
+                                    self.tgt_y_low  = self.cue_y_low_rew
+                                    
+                                self.rew_tgt[tgt_cond+'100'+str(tgt_num)].pos = (self.tgt_x,self.tgt_y)                   
+                                self.rew_tgt[tgt_cond+'100'+str(tgt_num)].draw()
+                            else:
+                                self.tgt_x_high = self.cue_x_high_rew
+                                self.tgt_y_high = self.cue_y_high_rew
+                                self.tgt_x_low  = self.cue_x_low_rew
+                                self.tgt_y_low  = self.cue_y_low_rew
+                                
+                                self.rew_tgt['h100'+str(high_rew_tgt_num)].pos = (self.cue_x_high_rew,self.cue_y_high_rew)                   
+                                self.rew_tgt['h100'+str(high_rew_tgt_num)].draw()
+                                self.rew_tgt['l100'+str(low_rew_tgt_num)].pos = (self.cue_x_low_rew,self.cue_y_low_rew)                   
+                                self.rew_tgt['l100'+str(low_rew_tgt_num)].draw()
                             self.pd_tgt.draw()
                             dout_ch_1 = 0
                             dout_ch_5 = 0
@@ -324,6 +482,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         state_inter_time = self.t
                         self.trial_data['state_start_t_detect_sac_start'].append(self.t)
                         state = 'DETECT_SACCADE_START'
+                        print('state = DETECT_SACCADE_START')
                     
                     if state == 'DETECT_SACCADE_START':
                         eye_dist_from_start_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
@@ -342,6 +501,12 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip() 
+                            self.tgt_x_high = 9999
+                            self.tgt_y_high = 9999
+                            self.tgt_x_low  = 9999
+                            self.tgt_y_low  = 9999
+                            self.tgt_center_x = 9999
+                            self.tgt_center_y = 9999
                             state = 'INCORRECT_SACCADE'
                         # If time runs out before saccade detected, play punishment sound and reset the trial
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
@@ -363,11 +528,22 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         # Check to see if saccade is in the right direction
                         target_dir_vector = [self.cue_x-self.start_x,self.cue_y-self.start_y]
                         unit_target_dir_vector = target_dir_vector/np.linalg.norm(target_dir_vector)
+                        target_dir_vector_low_rew = [self.cue_x_low_rew-self.start_x,self.cue_y_low_rew-self.start_y]
+                        unit_target_dir_vector_low_rew = target_dir_vector_low_rew/np.linalg.norm(target_dir_vector_low_rew)
+                        target_dir_vector_high_rew = [self.cue_x_high_rew-self.start_x,self.cue_y_high_rew-self.start_y]
+                        unit_target_dir_vector_high_rew = target_dir_vector_high_rew/np.linalg.norm(target_dir_vector_high_rew)
+                        ######
+                        # saccade_dir_vector = [self.eye_x-self.start_x,self.eye_y-self.start_y]
                         saccade_dir_vector = eye_vel
+                        ######
                         unit_saccade_dir_vector = saccade_dir_vector/np.linalg.norm(saccade_dir_vector)                    
                         angle_diff = np.arccos(np.dot(unit_target_dir_vector, unit_saccade_dir_vector))
+                        angle_diff_low_rew = np.arccos(np.dot(unit_target_dir_vector_low_rew, unit_saccade_dir_vector))
+                        angle_diff_high_rew = np.arccos(np.dot(unit_target_dir_vector_high_rew, unit_saccade_dir_vector))
 
-                        if angle_diff >= np.pi/2:
+                        if ((task_cond == 'forced') and (angle_diff >= np.pi/2)) or\
+                           ((task_cond == 'choice') and (angle_diff_low_rew >= np.pi/2) and (angle_diff_high_rew >= np.pi/2)):
+                            
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
@@ -378,24 +554,53 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.window.flip() 
                             state = 'INCORRECT_SACCADE'
                         else:
-                            # Move the target to secondary pos.
-                            self.tgt_x = self.end_x
-                            self.tgt_y = self.end_y
-                            self.tgt.pos = (self.tgt_x,self.tgt_y)
-                            self.tgt.draw()
+                            if task_cond == 'forced':
+                                if jump_cond == 'y':
+                                    self.tgt_x = self.end_x
+                                    self.tgt_y = self.end_y
+                                    self.tgt_center_x = 9999
+                                    self.tgt_center_y = 9999
+                                    if tgt_cond == 'h':
+                                        self.tgt_x_high = self.end_x
+                                        self.tgt_y_high = self.end_y
+                                        self.tgt_x_low  = 9999
+                                        self.tgt_y_low  = 9999
+                                    else:
+                                        self.tgt_x_high = 9999
+                                        self.tgt_y_high = 9999
+                                        self.tgt_x_low  = self.end_x
+                                        self.tgt_y_low  = self.end_y
+                                        
+                                self.rew_tgt[rew_cond+'100'+str(tgt_num)].pos = (self.tgt_x,self.tgt_y)
+                                self.rew_tgt[rew_cond+'100'+str(tgt_num)].draw()
+                            elif task_cond == 'choice':
+                                # Stay the targets at current pos. if choice condition
+                                self.tgt_x_high = self.cue_x_high_rew
+                                self.tgt_y_high = self.cue_y_high_rew
+                                self.tgt_x_low  = self.cue_x_low_rew
+                                self.tgt_y_low  = self.cue_y_low_rew
+                                self.tgt_center_x = 9999
+                                self.tgt_center_y = 9999
+                                
+                                self.rew_tgt['h100'+str(high_rew_tgt_num)].draw()
+                                self.rew_tgt['l100'+str(low_rew_tgt_num)].draw()
                             self.pd_tgt.draw()
                             self.window.flip() 
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_detect_sac_end'].append(self.t)
                             state = 'DETECT_SACCADE_END'
+                            print('state = DETECT_SACCADE_END')
                     
                     if state == 'DETECT_SACCADE_END':
                         if (eye_speed < fsm_parameter['sac_on_off_threshold']) and (self.t-state_start_time > 0.005):#25):
                             # Check if saccade made to cue or end tgt.
                             eye_dist_from_cue_tgt = np.sqrt((self.cue_x-self.eye_x)**2 + (self.cue_y-self.eye_y)**2)
                             eye_dist_from_end_tgt = np.sqrt((self.end_x-self.eye_x)**2 + (self.end_y-self.eye_y)**2)
-                            if ((eye_dist_from_cue_tgt < fsm_parameter['rew_area']/2) or (eye_dist_from_end_tgt < fsm_parameter['rew_area']/2)):
+                            eye_dist_from_cue_tgt_low_rew = np.sqrt((self.cue_x_low_rew-self.eye_x)**2 + (self.cue_y_low_rew-self.eye_y)**2)
+                            eye_dist_from_cue_tgt_high_rew = np.sqrt((self.cue_x_high_rew-self.eye_x)**2 + (self.cue_y_high_rew-self.eye_y)**2)
+                            if ((task_cond == 'forced') and ((eye_dist_from_cue_tgt < fsm_parameter['rew_area']/2) or (eye_dist_from_end_tgt < fsm_parameter['rew_area']/2))) or \
+                               ((task_cond == 'choice') and ((eye_dist_from_cue_tgt_low_rew < fsm_parameter['rew_area']/2) or (eye_dist_from_cue_tgt_high_rew < fsm_parameter['rew_area']/2))) :
                                 state_start_time = self.t
                                 state_inter_time = self.t
                                 self.trial_data['state_start_t_deliver_rew'].append(self.t)
@@ -410,7 +615,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                                 DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                                 self.window.flip() 
                                 state = 'INCORRECT_SACCADE'
-                        # If time runs out before saccade detected, reset the trial
+                          # If time runs out before saccade detected, reset the trial
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             state_start_time = self.t
                             state_inter_time = self.t
@@ -426,28 +631,46 @@ class CorrSacFsmProcess(multiprocessing.Process):
                     if state == 'DELIVER_REWARD':
                         eye_dist_from_cue_tgt = np.sqrt((self.cue_x-self.eye_x)**2 + (self.cue_y-self.eye_y)**2)
                         eye_dist_from_end_tgt = np.sqrt((self.end_x-self.eye_x)**2 + (self.end_y-self.eye_y)**2)
-                        if eye_dist_from_end_tgt < fsm_parameter['rew_area']/2:
-                            if (trial_num % fsm_parameter['pump_switch_interval']) == 0:
-                                if pump_to_use == 1:
-                                    pump_to_use = 2
+                        eye_dist_from_cue_tgt_low_rew = np.sqrt((self.cue_x_low_rew-self.eye_x)**2 + (self.cue_y_low_rew-self.eye_y)**2)
+                        eye_dist_from_cue_tgt_high_rew = np.sqrt((self.cue_x_high_rew-self.eye_x)**2 + (self.cue_y_high_rew-self.eye_y)**2)
+                        if ((task_cond == 'forced') and (eye_dist_from_end_tgt < fsm_parameter['rew_area']/2) and (jump_cond == 'y')) or \
+                           ((task_cond == 'forced') and (eye_dist_from_cue_tgt < fsm_parameter['rew_area']/2) and (jump_cond == 'n')) or \
+                           ((task_cond == 'choice') and ((eye_dist_from_cue_tgt_low_rew < fsm_parameter['rew_area']/2) or (eye_dist_from_cue_tgt_high_rew < fsm_parameter['rew_area']/2))):
+
+                            if task_cond == 'forced':
+                                if rew_cond == 'l':
+                                    lib.playSound(500,0.1) # low reward beep
+                                    self.fsm_to_gui_sndr.send(('pump',2,'pump',0))
                                 else:
-                                    pump_to_use = 1
-                                self.fsm_to_gui_sndr.send(('log','Pump switchd to '+str(pump_to_use)))
-                            self.fsm_to_gui_sndr.send(('pump',pump_to_use,'pump',0))
-                                                    
-                            lib.playSound(2000,0.1) # reward beep
+                                    lib.playSound(2000,0.1) # high reward beep
+                                    self.fsm_to_gui_sndr.send(('pump',1,'pump',0))
+                                self.rew_tgt[rew_cond+'100'+str(tgt_num)].draw()
+                                
+                            elif task_cond == 'choice':
+                                if eye_dist_from_cue_tgt_low_rew < fsm_parameter['rew_area']/2:
+                                    lib.playSound(500,0.1)
+                                    self.fsm_to_gui_sndr.send(('pump',2,'pump',0))
+                                    choice = 'l'
+                                elif eye_dist_from_cue_tgt_high_rew < fsm_parameter['rew_area']/2:
+                                    lib.playSound(2000,0.1)
+                                    self.fsm_to_gui_sndr.send(('pump',1,'pump',0))
+                                    choice = 'h'
+                                self.trial_data['choice'].append(choice.encode(encoding='UTF-8'))
+                                self.rew_tgt['h100'+str(high_rew_tgt_num)].draw()
+                                self.rew_tgt['l100'+str(low_rew_tgt_num)].draw()
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_end_tgt_fixation'].append(self.t)
-                            self.tgt.draw()
+                            
                             dout_ch_1 = 1
                             dout_ch_5 = 1
                             DPxSetDoutValue(dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*dout_ch_5, bitMask)
                             DPxUpdateRegCache() # calling this delays fsm by ~0.25 ms
                             self.window.flip()
                             state = 'END_TARGET_FIXATION'  
-                        # If animal makes random saccade instead of corrective one, reset trial
-                        elif (eye_dist_from_cue_tgt > fsm_parameter['rew_area']/2) and (eye_dist_from_end_tgt > fsm_parameter['rew_area']/2):
+                        # If animal makes random saccade instead of correct one, reset trial
+                        elif ((task_cond == 'forced') and (eye_dist_from_cue_tgt > fsm_parameter['rew_area']/2) and (eye_dist_from_end_tgt > fsm_parameter['rew_area']/2)) or \
+                             ((task_cond == 'choice') and (eye_dist_from_cue_tgt_low_rew > fsm_parameter['rew_area']/2) and (eye_dist_from_cue_tgt_high_rew > fsm_parameter['rew_area']/2)):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
@@ -471,13 +694,15 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state = 'STR_TARGET_PURSUIT'
                     
                     if state == 'END_TARGET_FIXATION':
-                        eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)   
-                        if ((self.t - state_inter_time) >= fsm_parameter['min_fix_time']):
+                        eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2) 
+                        presentationtime = 0.5
+                        if ((self.t - state_inter_time) >= presentationtime):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_trial_success'].append(self.t)
                             self.window.flip() # remove all targets
                             state = 'TRIAL_SUCCESS'
+                            print('state = TRIAL_SUCCESS')
                         # If time runs out before fixation finished, reset the trial
                         # No explicit fixation required
                         elif (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
@@ -493,7 +718,15 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             state = 'STR_TARGET_PURSUIT'                     
                     
                     if state == 'INCORRECT_SACCADE':
+                        # self.fsm_to_gui_sndr.send(('pun_beep',0))
                         if ((self.t - state_start_time) > fsm_parameter['pun_time']):
+                            self.tgt_x_high = 9999
+                            self.tgt_y_high = 9999
+                            self.tgt_x_low  = 9999
+                            self.tgt_y_low  = 9999
+                            self.tgt_center_x = 9999
+                            self.tgt_center_y = 9999
+                            
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
@@ -507,7 +740,6 @@ class CorrSacFsmProcess(multiprocessing.Process):
                     
                     if state == 'TRIAL_SUCCESS':
                         if (self.t-state_start_time) > fsm_parameter['ITI']:
-                            # Pull data
                             self.pull_data_t = self.t
                             self.pull_data()
                             # Send trial data to GUI
@@ -519,12 +751,18 @@ class CorrSacFsmProcess(multiprocessing.Process):
                             self.trial_data['left_cal_matrix'] = cal_parameter['left_cal_matrix']
                             state = 'INIT'   
                     
-                    # Append data 
+                    # Append realtime data
                     self.trial_data['tgt_time_data'].append(self.t)
                     self.trial_data['tgt_x_data'].append(self.tgt_x)
                     self.trial_data['tgt_y_data'].append(self.tgt_y)
                     self.trial_data['eye_x_data'].append(self.eye_x)
                     self.trial_data['eye_y_data'].append(self.eye_y)
+                    self.trial_data['tgt_x_high_data'].append(self.tgt_x_high)
+                    self.trial_data['tgt_y_high_data'].append(self.tgt_y_high)
+                    self.trial_data['tgt_x_low_data'].append(self.tgt_x_low)
+                    self.trial_data['tgt_y_low_data'].append(self.tgt_y_low)
+                    self.trial_data['tgt_center_x_data'].append(self.tgt_center_x)
+                    self.trial_data['tgt_center_y_data'].append(self.tgt_center_y)
                     # Update shared real time data
                     with self.real_time_data_Array.get_lock():
                         self.real_time_data_Array[0] = self.t
@@ -532,7 +770,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
                         self.real_time_data_Array[2] = self.eye_y
                         self.real_time_data_Array[3] = self.tgt_x
                         self.real_time_data_Array[4] = self.tgt_y
-                        
+        
         # Close PsychoPy
         core.quit()
         # Turn off VPixx schedule
@@ -551,13 +789,14 @@ class CorrSacFsmProcess(multiprocessing.Process):
         DPxUpdateRegCache()
         # Reset time
         self.t = math.nan
-        
+    
     def pull_data(self):
         '''
         to be called every 10 s or when a trial finishes, whichever is earlier
         and flush the data from VPixx. Reason for this is to prevent the data
         from accumulating, which will incur a delay when getting data 
         '''
+        # print('pull data')
         tpxData = TPxReadTPxData(0)
         self.trial_data['device_time_data'].extend(tpxData[0][0::22])
         self.trial_data['eye_lx_raw_data'].extend(tpxData[0][16::22])
@@ -573,18 +812,29 @@ class CorrSacFsmProcess(multiprocessing.Process):
 
         TPxSetupTPxSchedule() # flushes data in DATAPixx buffer
     
+    
     def update_target(self):
         tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'tgt')
         pd_tgt_parameter,_ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'pd_tgt')
+        fsm_parameter, _ = lib.load_parameter('experiment','exp_parameter.json',True,True,self.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
         self.tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg', 
                       lineColor=tgt_parameter['line_color'],fillColor=tgt_parameter['fill_color'],
                       lineWidth=tgt_parameter['line_width'])
+        
         self.tgt.draw() # draw once already, because the first draw may be slower - Poth, 2018   
         self.pd_tgt = visual.Rect(win=self.window, width=pd_tgt_parameter['size'],height=pd_tgt_parameter['size'], units='deg', 
                       lineColor=pd_tgt_parameter['line_color'],fillColor=pd_tgt_parameter['fill_color'],
                       lineWidth=pd_tgt_parameter['line_width'])
         self.pd_tgt.pos = pd_tgt_parameter['pos']
         self.pd_tgt.draw()
+        self.rew_tgt = {}
+        for counter_rew_tgt in range(self.num_rew_tgt):
+            self.rew_tgt['h100'+str(counter_rew_tgt)] = visual.ImageStim(win=self.window, image=os.path.join(str(Path().absolute()),'icon','fractals','h100'+str(counter_rew_tgt)+'.png'),
+                            size=(fsm_parameter['rew_tgt_size'],fsm_parameter['rew_tgt_size']))
+            self.rew_tgt['h100'+str(counter_rew_tgt)].draw()
+            self.rew_tgt['l100'+str(counter_rew_tgt)] = visual.ImageStim(win=self.window, image=os.path.join(str(Path().absolute()),'icon','fractals','l100'+str(counter_rew_tgt)+'.png'),
+                            size=(fsm_parameter['rew_tgt_size'],fsm_parameter['rew_tgt_size']))
+            self.rew_tgt['l100'+str(counter_rew_tgt)].draw()
         self.window.clearBuffer() # clear the back buffer of previously drawn stimuli - Poth, 2018
         
     def init_trial_data(self):
@@ -617,7 +867,27 @@ class CorrSacFsmProcess(multiprocessing.Process):
         self.trial_data['tgt_y_data'] = []
         self.trial_data['eye_x_data'] = []
         self.trial_data['eye_y_data'] = []
-         # 2000 Hz data
+        # Reward-specific
+        self.trial_data['cue_x_low_rew'] = [] # only applicable under choice condition
+        self.trial_data['cue_y_low_rew'] = [] # only applicable under choice condition    
+        self.trial_data['cue_x_high_rew'] = [] # only applicable under choice condition
+        self.trial_data['cue_y_high_rew'] = [] # only applicable under choice condition
+        self.trial_data['high_rew_tgt_num'] = [] # tgt. num. for high reward, if under high reward condition
+        self.trial_data['low_rew_tgt_num'] = [] # tgt. num for low reward, if under low reward condition
+        self.trial_data['tgt_cond'] = []  # whether target is high or low reward target
+        self.trial_data['tgt_num'] = [] # tgt. num, under forced condition
+        self.trial_data['rew_cond'] = []  # whether animal gets high or low reward
+        self.trial_data['jump_cond'] = []  # whether to jump or not
+        self.trial_data['task_cond'] = [] # choice or forced 
+        self.trial_data['choice'] = [] # animal's choice, under choice condition
+        self.trial_data['high_low_percentage'] = [] # percentage of high-reward trials in forced condition
+        self.trial_data['tgt_x_high_data'] = []
+        self.trial_data['tgt_y_high_data'] = []
+        self.trial_data['tgt_x_low_data'] = []
+        self.trial_data['tgt_y_low_data'] = []
+        self.trial_data['tgt_center_x_data'] = []
+        self.trial_data['tgt_center_y_data'] = []
+        # 2000 Hz data
         self.trial_data['eye_lx_raw_data'] = []
         self.trial_data['eye_ly_raw_data'] = []
         self.trial_data['eye_l_pupil_data'] = []
@@ -651,10 +921,15 @@ class CorrSacFsmProcess(multiprocessing.Process):
                     'num_corr_sac_dir':8,
                     'first_corr_sac_dir': 0,
                     'ITI':0.1,
-                    'pump_switch_interval':50}
-        return parameter  
-    
-class CorrSacGui(FsmGui):
+                    'high_low_percentage':80,
+                    'forced_trial_percentage': 50,
+                    'choice_trial_percentage': 50,
+                    'low_rew_amt':0.01,
+                    'high_rew_amt':0.03,
+                    'rew_tgt_size': 2.0
+                    }
+        return parameter
+class RwdPredGui(FsmGui):
     def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array,main_parameter):        
         self.exp_name = exp_name
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
@@ -663,9 +938,10 @@ class CorrSacGui(FsmGui):
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.real_time_data_Array = real_time_data_Array 
         self.main_parameter = main_parameter
-        super(CorrSacGui,self).__init__(self.stop_fsm_process_Event)      
+        super(RwdPredGui,self).__init__(self.stop_fsm_process_Event)      
         self.init_gui()
-        
+        # self.thread_pool = QThreadPool()
+        # self.eyelink_worker = EyelinkWorker()
         # Create socket for ZMQ
         try:
             context = zmq.Context()
@@ -690,7 +966,7 @@ class CorrSacGui(FsmGui):
         self.exp_parameter, self.parameter_file_path = lib.load_parameter('experiment','exp_parameter.json',True,True,self.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
         self.cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])
         self.update_parameter()
-        
+
         which_eye_tracked = self.cal_parameter['which_eye_tracked'].lower()
         if not self.cal_parameter[which_eye_tracked + '_cal_status']:
             self.toolbar_run_QAction.setDisabled(True)
@@ -726,12 +1002,18 @@ class CorrSacGui(FsmGui):
         self.num_corr_sac_dir_QDoubleSpinBox.valueChanged.connect(self.num_corr_sac_dir_QDoubleSpinBox_valueChanged)
         self.first_corr_sac_dir_QDoubleSpinBox.valueChanged.connect(self.first_corr_sac_dir_QDoubleSpinBox_valueChanged)
         self.iti_QDoubleSpinBox.valueChanged.connect(self.iti_QDoubleSpinBox_valueChanged)
-        self.pump_switch_QDoubleSpinBox.valueChanged.connect(self.pump_switch_QDoubleSpinBox_valueChanged)
+        self.high_low_percentage_QDoubleSpinBox.valueChanged.connect(self.high_low_percentage_QDoubleSpinBox_valueChanged)
+        self.forced_trial_percentage_QDoubleSpinBox.valueChanged.connect(self.forced_trial_percentage_QDoubleSpinBox_valueChanged)
+        self.low_rew_amt_QDoubleSpinBox.valueChanged.connect(self.low_rew_amt_QDoubleSpinBox_valueChanged)
+        self.high_rew_amt_QDoubleSpinBox.valueChanged.connect(self.high_rew_amt_QDoubleSpinBox_valueChanged)
+        self.rew_tgt_size_QDoubleSpinBox.valueChanged.connect(self.rew_tgt_size_QDoubleSpinBox_valueChanged)
         self.save_QPushButton.clicked.connect(self.save_QPushButton_clicked)
-    
+        # # EyeLink data processor
+        # self.eyelink_worker.signal.to_main_thread.connect(self.send_processed_data)
     #%% SLOTS
     @pyqtSlot()
     def toolbar_run_QAction_triggered(self):
+        # self.confirm_fsm_exit = False
         # Check to see if plot process ready
         self.fsm_to_plot_priority_socket.send_pyobj(('confirm_connection',0))
         # Wait for confirmation for 5 sec.
@@ -757,6 +1039,12 @@ class CorrSacGui(FsmGui):
                     self.exp_parameter['left_eye_tracked'] = 0
                 self.exp_parameter['version'] = 1.0
                 self.fsm_to_plot_priority_socket.send_pyobj(('init_data',self.exp_name, self.exp_parameter))
+                # Disable changing pump volume on plotting side
+                self.fsm_to_plot_priority_socket.send_pyobj(('pump',1,'disable_vol_change',0))
+                self.fsm_to_plot_priority_socket.send_pyobj(('pump',2,'disable_vol_change',0))
+                # Set pump volumes
+                self.fsm_to_plot_priority_socket.send_pyobj(('pump',1,'set_vol',self.high_rew_amt_QDoubleSpinBox.value()))
+                self.fsm_to_plot_priority_socket.send_pyobj(('pump',2,'set_vol',self.low_rew_amt_QDoubleSpinBox.value()))
                 # Start timer to get data from FSM
                 self.data_QTimer.start(self.data_rate)
                 # Tell plot GUI we are starting
@@ -797,7 +1085,15 @@ class CorrSacGui(FsmGui):
             self.fsm_to_plot_priority_socket.send_pyobj(msg)
             if msg_title == 'log':
                 self.log_QPlainTextEdit.appendPlainText(msg[1])
-
+            # if msg_title == 'process_eyelink_data':
+            #     # Stop timer to stop getting data from fsm thread
+            #     self.data_QTimer.stop()
+            #     self.eyelink_worker.data_dir_file_path = msg[1]
+            #     self.eyelink_worker.file_name = msg[2]
+            #     self.thread_pool.start(self.eyelink_worker)
+            # else:
+                # self.fsm_to_plot_priority_socket.send_pyobj(msg)
+                
         with self.real_time_data_Array.get_lock():
             t = self.real_time_data_Array[0]
             eye_x = self.real_time_data_Array[1]
@@ -820,7 +1116,16 @@ class CorrSacGui(FsmGui):
                 self.toolbar_stop_QAction_triggered()
             if msg_title == 'confirm_connection':
                 self.fsm_to_plot_priority_socket.send_pyobj((0,0))
-
+                
+    # @pyqtSlot(object)
+    # def send_processed_data(self, msg):
+    #     msg_title = msg[0]
+    #     if msg_title == 'log':
+    #         self.log_QPlainTextEdit.appendPlainText(msg[1])
+    #         self.fsm_to_plot_priority_socket.send_pyobj(msg)
+    #     elif msg_title == 'processed_data':
+    #         self.fsm_to_plot_priority_socket.send_pyobj(('processed_eyelink_data', msg[1]))
+            
     @pyqtSlot()
     def horz_offset_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['horz_offset'] = self.horz_offset_QDoubleSpinBox.value()
@@ -897,11 +1202,30 @@ class CorrSacGui(FsmGui):
     def iti_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['ITI'] = self.iti_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
-        
     @pyqtSlot()
-    def pump_switch_QDoubleSpinBox_valueChanged(self):
-        self.exp_parameter['pump_switch_interval'] = self.pump_switch_QDoubleSpinBox.value()
+    def high_low_percentage_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['high_low_percentage']  = int(self.high_low_percentage_QDoubleSpinBox.value())
+        # self.high_low_percentage_QDoubleSpinBox.setValue(self.exp_parameter['high_low_percentage'])
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+    @pyqtSlot()
+    def forced_trial_percentage_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['forced_trial_percentage'] = int(self.forced_trial_percentage_QDoubleSpinBox.value())
+        self.exp_parameter['choice_trial_percentage'] = 100 - self.exp_parameter['forced_trial_percentage']
+        self.choice_trial_percentage_QDoubleSpinBox.setValue(self.exp_parameter['choice_trial_percentage'])
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+    @pyqtSlot()
+    def low_rew_amt_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['low_rew_amt'] = self.low_rew_amt_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+    @pyqtSlot()
+    def high_rew_amt_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['high_rew_amt'] = self.high_rew_amt_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')  
+    @pyqtSlot()
+    def rew_tgt_size_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['rew_tgt_size'] = self.rew_tgt_size_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')    
+        
     @pyqtSlot()
     def save_QPushButton_clicked(self):
         with open(self.parameter_file_path,'r') as file:
@@ -916,7 +1240,6 @@ class CorrSacGui(FsmGui):
         self.plot_1_PlotWidget.deleteLater()
         self.plot_2_PlotWidget.deleteLater()
         # Disable pumps
-
         self.pump['1'].deleteLater()
         self.pump['2'].deleteLater()
         # Side panel tabs for extra params.
@@ -927,8 +1250,12 @@ class CorrSacGui(FsmGui):
         self.sidepanel_params_2_tab_QWidget = QWidget()
         self.sidepanel_params_2_tab_QVBoxLayout = QVBoxLayout()
         self.sidepanel_params_2_tab_QWidget.setLayout(self.sidepanel_params_2_tab_QVBoxLayout)
+        self.sidepanel_params_3_tab_QWidget = QWidget()
+        self.sidepanel_params_3_tab_QVBoxLayout = QVBoxLayout()
+        self.sidepanel_params_3_tab_QWidget.setLayout(self.sidepanel_params_3_tab_QVBoxLayout)
         self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_1_tab_QWidget, '1')
         self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_2_tab_QWidget, '2')
+        self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_3_tab_QWidget, '3')
         # Side panel
         self.horz_offset_QHBoxLayout = QHBoxLayout()
         self.horz_offset_QLabel = QLabel('Horizontal offset (deg):')
@@ -1004,18 +1331,18 @@ class CorrSacGui(FsmGui):
         self.rew_area_QHBoxLayout.addWidget(self.rew_area_QDoubleSpinBox)
         self.sidepanel_custom_QVBoxLayout.addLayout(self.rew_area_QHBoxLayout)
         
-        self.pump_switch_QHBoxLayout = QHBoxLayout()
-        self.pump_switch_QLabel = QLabel("Pump switch interval (trials):")
-        self.pump_switch_QLabel.setAlignment(Qt.AlignRight)
-        self.pump_switch_QHBoxLayout.addWidget(self.pump_switch_QLabel)
-        self.pump_switch_QDoubleSpinBox = QDoubleSpinBox()
-        self.pump_switch_QDoubleSpinBox.setToolTip('After how many trials, pump should switch')
-        self.pump_switch_QDoubleSpinBox.setValue(50)
-        self.pump_switch_QDoubleSpinBox.setMaximum(9999)
-        self.pump_switch_QDoubleSpinBox.setSingleStep(1)
-        self.pump_switch_QDoubleSpinBox.setDecimals(0)
-        self.pump_switch_QHBoxLayout.addWidget(self.pump_switch_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.pump_switch_QHBoxLayout)
+        self.high_low_percentage_QHBoxLayout = QHBoxLayout()
+        self.high_low_percentage_QLabel = QLabel("high reward peccentage (forced trials):")
+        self.high_low_percentage_QLabel.setAlignment(Qt.AlignRight)
+        self.high_low_percentage_QHBoxLayout.addWidget(self.high_low_percentage_QLabel)
+        self.high_low_percentage_QDoubleSpinBox = QDoubleSpinBox()
+        self.high_low_percentage_QDoubleSpinBox.setToolTip('What peccentage of forced trials are high rewrad')
+        self.high_low_percentage_QDoubleSpinBox.setValue(80)
+        self.high_low_percentage_QDoubleSpinBox.setMaximum(100)
+        self.high_low_percentage_QDoubleSpinBox.setSingleStep(5)
+        self.high_low_percentage_QDoubleSpinBox.setDecimals(0)
+        self.high_low_percentage_QHBoxLayout.addWidget(self.high_low_percentage_QDoubleSpinBox)
+        self.sidepanel_custom_QVBoxLayout.addLayout(self.high_low_percentage_QHBoxLayout)
         
         self.sidepanel_custom_QVBoxLayout.addWidget(self.sidepanel_params_TabWidget)
         
@@ -1179,32 +1506,103 @@ class CorrSacGui(FsmGui):
         self.iti_QHBoxLayout.addWidget(self.iti_QDoubleSpinBox)
         self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.iti_QHBoxLayout)
         
+        self.forced_trial_percentage_QHBoxLayout = QHBoxLayout()
+        self.forced_trial_percentage_QLabel = QLabel("% of forced trials:")
+        self.forced_trial_percentage_QLabel.setAlignment(Qt.AlignRight)
+        self.forced_trial_percentage_QHBoxLayout.addWidget(self.forced_trial_percentage_QLabel)
+        self.forced_trial_percentage_QDoubleSpinBox = QDoubleSpinBox()
+        self.forced_trial_percentage_QDoubleSpinBox.setMinimum(0)
+        self.forced_trial_percentage_QDoubleSpinBox.setValue(50)
+        self.forced_trial_percentage_QDoubleSpinBox.setMaximum(100)
+        self.forced_trial_percentage_QDoubleSpinBox.setSingleStep(1)
+        self.forced_trial_percentage_QDoubleSpinBox.setDecimals(0)
+        self.forced_trial_percentage_QHBoxLayout.addWidget(self.forced_trial_percentage_QDoubleSpinBox)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.forced_trial_percentage_QHBoxLayout)
+        
+        self.choice_trial_percentage_QHBoxLayout = QHBoxLayout()
+        self.choice_trial_percentage_QLabel = QLabel("% of choice trials:")
+        self.choice_trial_percentage_QLabel.setAlignment(Qt.AlignRight)
+        self.choice_trial_percentage_QHBoxLayout.addWidget(self.choice_trial_percentage_QLabel)
+        self.choice_trial_percentage_QDoubleSpinBox = QDoubleSpinBox()
+        self.choice_trial_percentage_QDoubleSpinBox.setMinimum(0)
+        self.choice_trial_percentage_QDoubleSpinBox.setValue(50)
+        self.choice_trial_percentage_QDoubleSpinBox.setMaximum(100)
+        self.choice_trial_percentage_QDoubleSpinBox.setSingleStep(1)
+        self.choice_trial_percentage_QDoubleSpinBox.setDecimals(0)
+        self.choice_trial_percentage_QDoubleSpinBox.setDisabled(True) # the value will be set from the % of forced trials
+        self.choice_trial_percentage_QHBoxLayout.addWidget(self.choice_trial_percentage_QDoubleSpinBox)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.choice_trial_percentage_QHBoxLayout)
+        
+        self.low_rew_amt_QHBoxLayout = QHBoxLayout()
+        self.low_rew_amt_QLabel = QLabel("Low reward vol. per pump (mL):")
+        self.low_rew_amt_QLabel.setAlignment(Qt.AlignRight)
+        self.low_rew_amt_QHBoxLayout.addWidget(self.low_rew_amt_QLabel)
+        self.low_rew_amt_QDoubleSpinBox = QDoubleSpinBox()
+        self.low_rew_amt_QDoubleSpinBox.setMinimum(0.001)
+        self.low_rew_amt_QDoubleSpinBox.setValue(0.01)
+        self.low_rew_amt_QDoubleSpinBox.setMaximum(1)
+        self.low_rew_amt_QDoubleSpinBox.setSingleStep(0.001)
+        self.low_rew_amt_QDoubleSpinBox.setDecimals(3)
+        self.low_rew_amt_QHBoxLayout.addWidget(self.low_rew_amt_QDoubleSpinBox)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.low_rew_amt_QHBoxLayout)
+        
+        self.high_rew_amt_QHBoxLayout = QHBoxLayout()
+        self.high_rew_amt_QLabel = QLabel("High reward vol. per pump (mL):")
+        self.high_rew_amt_QLabel.setAlignment(Qt.AlignRight)
+        self.high_rew_amt_QHBoxLayout.addWidget(self.high_rew_amt_QLabel)
+        self.high_rew_amt_QDoubleSpinBox = QDoubleSpinBox()
+        self.high_rew_amt_QDoubleSpinBox.setMinimum(0.001)
+        self.high_rew_amt_QDoubleSpinBox.setValue(0.03)
+        self.high_rew_amt_QDoubleSpinBox.setMaximum(1)
+        self.high_rew_amt_QDoubleSpinBox.setSingleStep(0.001)
+        self.high_rew_amt_QDoubleSpinBox.setDecimals(3)
+        self.high_rew_amt_QHBoxLayout.addWidget(self.high_rew_amt_QDoubleSpinBox)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.high_rew_amt_QHBoxLayout)
+        
+        self.rew_tgt_size_QHBoxLayout = QHBoxLayout()
+        self.rew_tgt_size_QLabel = QLabel("Reward target size (deg):")
+        self.rew_tgt_size_QLabel.setAlignment(Qt.AlignRight)
+        self.rew_tgt_size_QHBoxLayout.addWidget(self.rew_tgt_size_QLabel)
+        self.rew_tgt_size_QDoubleSpinBox = QDoubleSpinBox()
+        self.rew_tgt_size_QDoubleSpinBox.setMinimum(0.5)
+        self.rew_tgt_size_QDoubleSpinBox.setValue(2.0)
+        self.rew_tgt_size_QDoubleSpinBox.setMaximum(20)
+        self.rew_tgt_size_QDoubleSpinBox.setSingleStep(0.5)
+        self.rew_tgt_size_QDoubleSpinBox.setDecimals(1)
+        self.rew_tgt_size_QHBoxLayout.addWidget(self.rew_tgt_size_QDoubleSpinBox)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.rew_tgt_size_QHBoxLayout)
+        
         self.save_QPushButton = QPushButton('Save parameters')
         self.sidepanel_custom_QVBoxLayout.addWidget(self.save_QPushButton)
     #%% FUNCTIONS    
     def set_default_parameter(self):
         parameter = {
-                    'horz_offset':0.0,
-                    'vert_offset':0.0,
-                    'max_allow_time':0.7,
-                    'min_fix_time':0.1,
-                    'max_wait_for_fixation':1.5,
-                    'pun_time':0.1,
-                    'time_to_reward':0.1,
-                    'sac_detect_threshold':150.0,
-                    'sac_on_off_threshold':75.0,
-                    'rew_area':3.0,
-                    'pursuit_amp':0.1,
-                    'pursuit_dur':0.1,
-                    'prim_sac_amp':4.0,
-                    'num_prim_sac_dir':8,
-                    'first_prim_sac_dir': 0,
-                    'corr_sac_amp':2.0,
-                    'num_corr_sac_dir':8,
-                    'first_corr_sac_dir': 0,
-                    'ITI':0.1,
-                    'pump_switch_interval':50
-                    }
+                         'horz_offset':0.0,
+                         'vert_offset':0.0,
+                         'max_allow_time':0.7,
+                         'min_fix_time':0.1,
+                         'max_wait_for_fixation':1.5,
+                         'pun_time':0.1,
+                         'time_to_reward':0.1,
+                         'sac_detect_threshold':150.0,
+                         'sac_on_off_threshold':75.0,
+                         'rew_area':4.0,
+                         'pursuit_amp':0.1,
+                         'pursuit_dur':0.1,
+                         'prim_sac_amp':4.0,
+                         'num_prim_sac_dir':8,
+                         'first_prim_sac_dir': 0,
+                         'corr_sac_amp':2.0,
+                         'num_corr_sac_dir':8,
+                         'first_corr_sac_dir': 0,
+                         'ITI':0.1,
+                         'high_low_percentage':80,
+                         'forced_trial_percentage': 50,
+                         'choice_trial_percentage': 50,
+                         'low_rew_amt':0.01,
+                         'high_rew_amt':0.03,
+                         'rew_tgt_size': 1                         
+                         }
         return parameter
     
     def update_parameter(self):
@@ -1230,12 +1628,16 @@ class CorrSacGui(FsmGui):
         self.num_corr_sac_dir_QDoubleSpinBox.setValue(self.exp_parameter['num_corr_sac_dir'])
         self.first_corr_sac_dir_QDoubleSpinBox.setValue(self.exp_parameter['first_corr_sac_dir'])
         self.iti_QDoubleSpinBox.setValue(self.exp_parameter['ITI'])
-        self.pump_switch_QDoubleSpinBox.setValue(self.exp_parameter['pump_switch_interval'])
-
+        self.high_low_percentage_QDoubleSpinBox.setValue(self.exp_parameter['high_low_percentage'])
+        self.forced_trial_percentage_QDoubleSpinBox.setValue(self.exp_parameter['forced_trial_percentage'])
+        self.choice_trial_percentage_QDoubleSpinBox.setValue(self.exp_parameter['choice_trial_percentage'])
+        self.low_rew_amt_QDoubleSpinBox.setValue(self.exp_parameter['low_rew_amt'])
+        self.high_rew_amt_QDoubleSpinBox.setValue(self.exp_parameter['high_rew_amt'])
         
-class CorrSacGuiProcess(multiprocessing.Process):
+        
+class RwdPredGuiProcess(multiprocessing.Process):
     def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, main_parameter, parent=None):
-        super(CorrSacGuiProcess,self).__init__(parent)
+        super(RwdPredGuiProcess,self).__init__(parent)
         self.exp_name = exp_name
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
         self.gui_to_fsm_sndr = gui_to_fsm_sndr
@@ -1243,9 +1645,12 @@ class CorrSacGuiProcess(multiprocessing.Process):
         self.real_time_data_Array = real_time_data_Array
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.main_parameter = main_parameter
+
     def run(self):  
         app = QApplication(sys.argv)
-        app_gui = CorrSacGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array, self.main_parameter)
+        app_gui = RwdPredGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event, self.real_time_data_Array, self.main_parameter)
         app_gui.setWindowIcon(QtGui.QIcon(os.path.join('.', 'icon', 'experiment_window.png')))
         app_gui.show()
         sys.exit(app.exec())
+
+        

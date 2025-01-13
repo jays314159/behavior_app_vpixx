@@ -134,10 +134,11 @@ class FsmGui(QMainWindow):
         self.sidepanel_QTabWidget = QTabWidget()
         self.sidepanel_default_QVBoxLayout = QVBoxLayout() # place to add default parameters/widgets
         self.sidepanel_default_QVBoxLayout.addWidget(self.sidepanel_QTabWidget)
-        self.pump_1 = PumpWidget(1)
-        self.sidepanel_QTabWidget.addTab(self.pump_1, 'Pump 1')
-        self.pump_2 = PumpWidget(2)
-        self.sidepanel_QTabWidget.addTab(self.pump_2, 'Pump 2')
+        self.pump = {}
+        self.pump['1'] = PumpWidget(1)
+        self.sidepanel_QTabWidget.addTab(self.pump['1'], 'Pump 1')
+        self.pump['2'] = PumpWidget(2)
+        self.sidepanel_QTabWidget.addTab(self.pump['2'], 'Pump 2')
         self.sidepanel_QVBoxLayout.addLayout(self.sidepanel_default_QVBoxLayout)
         self.tgt = TargetWidget('tgt')
         self.tgt.tgt_pos_x_QDoubleSpinBox.setDisabled(True)
@@ -152,8 +153,8 @@ class FsmGui(QMainWindow):
             self.stop_fsm_process_Event.set()
         time.sleep(0.1)
         try:
-            self.pump_1.clean_exit()
-            self.pump_2.clean_exit()
+            self.pump['1'].clean_exit()
+            self.pump['2'].clean_exit()
         except:
             pass
         try:

@@ -14,6 +14,7 @@ from calibration.refinement import CalRefineFsmProcess, CalRefineGuiProcess
 from experiment.simple_saccade import SimpleSacGuiProcess, SimpleSacFsmProcess
 from experiment.corr_saccade import CorrSacGuiProcess, CorrSacFsmProcess
 from experiment.opto_simple_saccade import OptoSimpleSacGuiProcess, OptoSimpleSacFsmProcess
+from experiment.reward_prediction import RwdPredGuiProcess, RwdPredFsmProcess
 from target import TargetWidget
 import app_lib as lib
 
@@ -42,6 +43,8 @@ class MainGui(QMainWindow):
         self.menu_cal.addAction(self.cal_QAction)
         self.refine_cal_QAction = QAction('Refinement',self)
         self.menu_cal.addAction(self.refine_cal_QAction)
+        self.reward_prediction_QAction = QAction('Reward Prediction',self)
+        self.menu_exp.addAction(self.reward_prediction_QAction)
         
         # Setting GUI
         self.main_QWidget = QWidget()
@@ -222,6 +225,7 @@ class MainGui(QMainWindow):
         self.opto_simple_sac_QAction.triggered.connect(self.opto_simple_sac_QAction_triggered)
         self.cal_QAction.triggered.connect(self.cal_QAction_triggered)
         self.refine_cal_QAction.triggered.connect(self.refine_cal_QAction_triggered)
+        self.reward_prediction_QAction.triggered.connect(self.reward_prediction_QAction_triggered)
         
         self.monitor_total_num_QSpinBox.valueChanged.connect(self.monitor_total_num_QSpinBox_valueChanged)
         self.monitor_num_test_QPushButton.clicked.connect(self.monitor_num_test_QPushButton_clicked)
@@ -322,6 +326,32 @@ class MainGui(QMainWindow):
         fsm_process.start()
         time.sleep(0.25) # without this artificial delay, sometimes causes error
         gui_process.start()
+        
+    def reward_prediction_QAction_triggered(self):
+        # Empty Linux log files; communication with tracker fills up the files, eventually crashing
+        sys_password = self.sys_password_QLineEdit.text()
+        cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
+        os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog.1'" % (sys_password))
+        if cmd_output != 0:
+            self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
+            return
+        
+        self.save_parameter()
+        
+        stop_exp_Event = multiprocessing.Event()
+        stop_exp_Event.set()
+        stop_fsm_process_Event = multiprocessing.Event()
+        fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False)
+        gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
+        
+        real_time_data_Array = multiprocessing.Array('d', range(5))
+        exp_name = 'reward_prediction'
+        fsm_process = RwdPredFsmProcess(exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter, self.mon_parameter)
+        gui_process = RwdPredGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
+                   
+        fsm_process.start()
+        time.sleep(0.25)
+        gui_process.start()        
         
     def cal_QAction_triggered(self):
         # Empty Linux log files; communication with tracker fills up the files, eventually crashing
