@@ -203,7 +203,7 @@ class PlotGui(FsmGui):
         # If controlling Open Ephys, copy the behavior files to Open Ephys folder
         if self.open_ephys_connected:
             try:
-                print(recent_rec_dir)
+                # print(recent_rec_dir)
                 self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
                 self.open_ephys_socket.recv()
                 shutil.copy(os.path.join(self.data_manager.data_file_path +'.hdf5'),os.path.join(recent_rec_dir,'raw_data')) # rec. path from above
