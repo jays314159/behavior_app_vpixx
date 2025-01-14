@@ -354,8 +354,8 @@ class PlotGui(FsmGui):
                             self.open_ephys_socket.send_string('IsAcquiring') # dummy check to see Open Ephys comm. works
                             self.open_ephys_socket.recv()
                             # Find the latest recording folder and rename subfolder to 'raw_data'
-                            rec_dir = self.data_path_QLineEdit.text()
-                            recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
+                            #rec_dir = self.data_path_QLineEdit.text()
+                            #recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
                             shutil.copy(os.path.join(self.data_manager.data_file_path +'.hdf5'),os.path.join(recent_rec_dir,'raw_data')) # rec. path from above
                             shutil.copy(os.path.join(self.data_manager.data_file_path +'.mat'),os.path.join(recent_rec_dir,'raw_data'))
                         except Exception as error:
