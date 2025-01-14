@@ -115,20 +115,7 @@ class PlotGui(FsmGui):
         self.flag_stop = 0
         if self.ephys_QCheckBox.isChecked():
             # Control Open Ephys
-            port_num = 5555
-            try:
-                self.open_ephys_socket = self.init_open_ephys_connection(port_num)
-                self.open_ephys_socket.send_string('IsAcquiring')
-                self.open_ephys_socket.recv()
-                self.open_ephys_connected = True
-                self.open_ephys_started = False
-                connect_msg = f'Connection to Open Ephys success.'
-                self.log_QPlainTextEdit.appendPlainText(connect_msg)
-            except:
-                err_msg = f'nope.'
-                self.log_QPlainTextEdit.appendPlainText(err_msg)
-                self.open_ephys_connected = False
-                self.open_ephys_started = False
+
                             
             if self.open_ephys_connected:
                 try:
