@@ -334,7 +334,7 @@ class PlotGui(FsmGui):
                             # Find the latest recording folder and rename subfolder to 'raw_data'
                             rec_dir = self.data_path_QLineEdit.text()
                             recent_rec_dir = max([os.path.join(rec_dir,d) for d in os.listdir(rec_dir)], key=os.path.getmtime)
-                            print(recent_rec_dir)
+                            #print(recent_rec_dir)
                             os.rename(os.path.join(recent_rec_dir,os.listdir(recent_rec_dir)[0]), os.path.join(recent_rec_dir,'raw_data'))
                             self.open_ephys_started = False
                         except:
