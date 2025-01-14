@@ -325,7 +325,7 @@ class PlotGui(FsmGui):
                     self.toolbar_stop_QAction.setDisabled(True)
 
                     #stop open Ephys
-                    if self.open_ephys_started:
+                    if self.open_ephys_connected:
                         try:
                             open_ephys_msg = 'StopRecord'
                             self.open_ephys_socket.send_string(open_ephys_msg)
