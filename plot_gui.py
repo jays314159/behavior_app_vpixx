@@ -24,7 +24,7 @@ class PlotGui(FsmGui):
         self.ephys_restart_QAction = QAction(QtGui.QIcon(os.path.join('.', 'icon', 'restart.png')),'')
         self.ephys_restart_QAction.setToolTip('Restart network connection to Ephys')
         self.toolbar.addAction(self.ephys_restart_QAction)
-        self.ephys_restart_QAction.triggered.connect(self.open_ephys_restart_QAction_triggered)     
+        self.ephys_restart_QAction.triggered.connect(self.ephys_restart_QAction_triggered)     
         self.ephys_QLabel = QLabel(' Ephys control: ')
         self.ephys_QCheckBox = QCheckBox()
         self.toolbar.addWidget(self.ephys_QLabel)
@@ -115,6 +115,7 @@ class PlotGui(FsmGui):
     def toolbar_run_QAction_triggered(self):
         self.flag_stop = 0
         if self.ephys_QCheckBox.isChecked():
+            
             # Control Open Ephys
             #port_num = 5555
             #try:
@@ -222,7 +223,7 @@ class PlotGui(FsmGui):
         self.toolbar_connect_QAction.setDisabled(True)
 
     @pyqtSlot()
-    def open_ephys_restart_QAction_triggered(self):
+    def ephys_restart_QAction_triggered(self):
         '''
         try to restart ZMQ connection to Open Ephys
         '''
