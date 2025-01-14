@@ -122,11 +122,14 @@ class PlotGui(FsmGui):
                 self.open_ephys_socket.recv()
                 self.open_ephys_connected = True
                 self.open_ephys_started = False
+                connect_msg = f'Connection to Open Ephys success.'
+                self.log_QPlainTextEdit.appendPlainText(connect_msg)
             except:
-                err_msg = f'Connection to Open Ephys failed. Change port to {port_num} and restart connection.'
+                err_msg = f'nope.'
                 self.log_QPlainTextEdit.appendPlainText(err_msg)
                 self.open_ephys_connected = False
-                self.open_ephys_started = False            
+                self.open_ephys_started = False
+                            
             if self.open_ephys_connected:
                 try:
                     open_ephys_msg = f'StartRecord RecordNode=1 CreateNewDir=1 RecDir={self.data_path_QLineEdit.text()}'
