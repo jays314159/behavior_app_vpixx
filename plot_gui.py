@@ -296,6 +296,7 @@ class PlotGui(FsmGui):
                 self.data_manager.init_data(exp_name,exp_parameter)
             if msg_title == 'run':
                 # print('1')
+                self.flag_stop = 0
                 self.toolbar_run_QAction.setDisabled(True)
                 self.toolbar_stop_QAction.setEnabled(True)
                 # Control Open Ephys
