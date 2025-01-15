@@ -5,7 +5,7 @@ from ctypes import byref, POINTER, c_int, c_short, c_bool, c_char_p
 
 
 class SpikeGLXHandler:
-    def __init__(self, logger, ip_addr="127.0.0.1", port=52521):
+    def __init__(self, logger, ip_addr="127.0.0.1", port=4142):
 
         self.sglx_addr = ip_addr
         self.sglx_port = port
