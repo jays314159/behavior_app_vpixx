@@ -437,5 +437,9 @@ if __name__ == '__main__':
         #print(type(app_gui.spike_glx))
         attrs_spglx = vars(app_gui.spike_glx)
         print(', '.join("%s: %s" % item for item in attrs_spglx.items()))
+        try:
+            app_gui.spike_glx.connect()
+        except Exception as error:
+            print(error) 
         app_gui.show()
         sys.exit(app.exec())
