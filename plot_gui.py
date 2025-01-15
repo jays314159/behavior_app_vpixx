@@ -145,10 +145,12 @@ class PlotGui(FsmGui):
             else:
                try:
                     self.log_QPlainTextEdit.appendPlainText('Attempting to start SpikeGLX...')
+                    print("we are here")
+                    print(type(PlotGui.spike_glx))
                     if self.spike_glx.connect():
-                     self.log_QPlainTextEdit.appendPlainText('SpikeGLX recording started.')
-                     self.spike_glx.start_recording()
-                     self.spike_glx_started = True
+                        self.log_QPlainTextEdit.appendPlainText('SpikeGLX recording started.')
+                        self.spike_glx.start_recording()
+                        self.spike_glx_started = True
                except:
                    self.log_QPlainTextEdit.appendPlainText('Error in connecting to SpikeGLX.')
 
