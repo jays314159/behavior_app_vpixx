@@ -231,16 +231,24 @@ class PlotGui(FsmGui):
         port_num = 5555
         try:
             self.open_ephys_socket = self.init_open_ephys_connection(port_num)
+            print('1')
             self.open_ephys_socket.send_string('IsAcquiring')
+            print('2')
             self.open_ephys_socket.recv()
+            print('3')
             self.open_ephys_connected = True
+            print('4')
             self.open_ephys_started = False
+            print('5')
         except:
             err_msg = f'Connection to Open Ephys unsuccessful. Change port to {port_num} and restart connection.'
+            print('6')
             self.log_QPlainTextEdit.appendPlainText(err_msg)
+            print('7')
             self.open_ephys_connected = False
+            print('8')
             self.open_ephys_started = False
-
+            print('9')
     @pyqtSlot()
     def receiver_QTimer_timeout(self):
         # Non-priority channel - only data for real-time plotting
