@@ -146,9 +146,6 @@ class PlotGui(FsmGui):
                try:
                     self.log_QPlainTextEdit.appendPlainText('Attempting to start SpikeGLX...')
                     print("we are here")
-                    attrs = vars(PlotGui)
-                    print(', '.join("%s: %s" % item for item in attrs.items()))
-                    print(type(PlotGui.spike_glx))
                     if self.spike_glx.connect():
                         self.log_QPlainTextEdit.appendPlainText('SpikeGLX recording started.')
                         self.spike_glx.start_recording()
@@ -432,14 +429,5 @@ if __name__ == '__main__':
         app = QApplication(sys.argv)
         app.setWindowIcon(QtGui.QIcon(os.path.join('.', 'icon', 'experiment_window.png')))
         app_gui = PlotGui(0)
-        attrs = vars(app_gui)
-        #print(', '.join("%s: %s" % item for item in attrs.items()))
-        #print(type(app_gui.spike_glx))
-        attrs_spglx = vars(app_gui.spike_glx)
-        print(', '.join("%s: %s" % item for item in attrs_spglx.items()))
-        try:
-            app_gui.spike_glx.connect()
-        except Exception as error:
-            print(error) 
         app_gui.show()
         sys.exit(app.exec())
