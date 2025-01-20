@@ -1614,7 +1614,7 @@ class RwdPredGui(FsmGui):
                          'choice_trial_percentage': 50,
                          'low_rew_amt':0.01,
                          'high_rew_amt':0.03,
-                         'rew_tgt_size': 2.0                        
+                         'rew_tgt_size': 1                        
                          }
         return parameter
     
