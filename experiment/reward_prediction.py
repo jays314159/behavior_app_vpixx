@@ -829,20 +829,21 @@ class RwdPredFsmProcess(multiprocessing.Process):
         self.pd_tgt.draw()
         self.rew_tgt = {}
         for counter_rew_tgt in range(self.num_rew_tgt):
-            self.rew_tgt['h100'+str(counter_rew_tgt)] = visual.ImageStim(win=self.window, image=os.path.join(str(Path().absolute()),'icon','fractals','h100'+str(counter_rew_tgt)+'.png'),
-                            size=(fsm_parameter['rew_tgt_size'],fsm_parameter['rew_tgt_size']))
-            self.rew_tgt['h100'+str(counter_rew_tgt)].draw()
-            self.rew_tgt['l100'+str(counter_rew_tgt)] = visual.ImageStim(win=self.window, image=os.path.join(str(Path().absolute()),'icon','fractals','l100'+str(counter_rew_tgt)+'.png'),
-                            size=(fsm_parameter['rew_tgt_size'],fsm_parameter['rew_tgt_size']))
-            self.rew_tgt['l100'+str(counter_rew_tgt)].draw()
-
-
+            
             # self.rew_tgt['h100'+str(counter_rew_tgt)] = visual.ImageStim(win=self.window, image=os.path.join(str(Path().absolute()),'icon','fractals','h100'+str(counter_rew_tgt)+'.png'),
-            #                 size=(2.0, 2.0))
+            #                 size=(fsm_parameter['rew_tgt_size'],fsm_parameter['rew_tgt_size']))
             # self.rew_tgt['h100'+str(counter_rew_tgt)].draw()
             # self.rew_tgt['l100'+str(counter_rew_tgt)] = visual.ImageStim(win=self.window, image=os.path.join(str(Path().absolute()),'icon','fractals','l100'+str(counter_rew_tgt)+'.png'),
-            #                 size=(2.0,2.0))
+            #                 size=(fsm_parameter['rew_tgt_size'],fsm_parameter['rew_tgt_size']))
             # self.rew_tgt['l100'+str(counter_rew_tgt)].draw()
+
+
+            self.rew_tgt['h100'+str(counter_rew_tgt)] = visual.ImageStim(win=self.window, image=os.path.join(str(Path().absolute()),'icon','fractals','h100'+str(counter_rew_tgt)+'.png'),
+                            size=(2.0, 2.0))
+            self.rew_tgt['h100'+str(counter_rew_tgt)].draw()
+            self.rew_tgt['l100'+str(counter_rew_tgt)] = visual.ImageStim(win=self.window, image=os.path.join(str(Path().absolute()),'icon','fractals','l100'+str(counter_rew_tgt)+'.png'),
+                            size=(2.0,2.0))
+            self.rew_tgt['l100'+str(counter_rew_tgt)].draw()
 
         self.window.clearBuffer() # clear the back buffer of previously drawn stimuli - Poth, 2018
         
