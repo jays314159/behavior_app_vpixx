@@ -819,7 +819,7 @@ class RwdPredFsmProcess(multiprocessing.Process):
     def update_target(self):
         tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'tgt')
         pd_tgt_parameter,_ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'pd_tgt')
-        fsm_parameter, _ = lib.load_parameter('experiment','exp_parameter.json',True,True,self.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
+        fsm_parameter, _ = lib.load_parameter('experiment','exp_parameter.json',True,True,RwdPredGui.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
         self.tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg', 
                       lineColor=tgt_parameter['line_color'],fillColor=tgt_parameter['fill_color'],
                       lineWidth=tgt_parameter['line_width'])
@@ -1614,7 +1614,7 @@ class RwdPredGui(FsmGui):
                          'choice_trial_percentage': 50,
                          'low_rew_amt':0.01,
                          'high_rew_amt':0.03,
-                         'rew_tgt_size': 1                        
+                         'rew_tgt_size': 2.0                        
                          }
         return parameter
     
