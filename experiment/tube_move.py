@@ -105,6 +105,7 @@ class TubeMoveFsmProcess(multiprocessing.Process):
         run_exp = False
         random_signal_t = math.nan
         # Process loop
+        print("bp 1")
         while not self.stop_fsm_process_event.is_set():
             if not self.stop_exp_event.is_set():
                 # Turn on VPixx schedule; this needed to collect data
@@ -126,7 +127,9 @@ class TubeMoveFsmProcess(multiprocessing.Process):
 
                 run_exp = True
             # Trial loop
+            print("bp 2")
             while not self.stop_fsm_process_event.is_set() and run_exp:
+                print("bp 3")
                 if self.stop_exp_event.is_set():
                     run_exp = False
                     self.t = math.nan
@@ -138,6 +141,7 @@ class TubeMoveFsmProcess(multiprocessing.Process):
 
                 # FSM loop
                 while not self.stop_fsm_process_event.is_set() and run_exp:
+                    print("bp 4")
                     if self.stop_exp_event.is_set():
                         run_exp = False
                         self.t = math.nan
@@ -147,6 +151,7 @@ class TubeMoveFsmProcess(multiprocessing.Process):
                         self.window.flip()
                         break
                     # Send random signal for alignment
+                    print("bp 5")
                     if (self.t - random_signal_t) > random_signal_flip_duration:
                         random_signal_t = self.t
                         if random.random() > 0.5:
