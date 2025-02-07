@@ -153,7 +153,7 @@ class TubeMoveFsmProcess(multiprocessing.Process):
                     break
 
                 # FSM loop
-                while not self.stop_fsm_process_event.is_set() and run_exp
+                while not self.stop_fsm_process_event.is_set() and run_exp:
                     if self.stop_exp_event.is_set():
                         run_exp = False
                         self.t = math.nan
