@@ -314,6 +314,7 @@ class MainGui(QMainWindow):
         tube_move_left_Event = multiprocessing.Event()
         tube_move_right_Event = multiprocessing.Event()
         tube_move_center_Event = multiprocessing.Event()
+        tube_move_center_Event.set()
         fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False)
         gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
 

@@ -134,13 +134,10 @@ class TubeMoveFsmProcess(multiprocessing.Process):
                 run_exp = True
 
             if self.tube_move_left_Event.is_set():
-                print("left")
                 DPxSetDoutValue(1 << 2 | 0 << 4, bit_mask)
             elif self.tube_move_center_Event.is_set():
-                print("center")
                 DPxSetDoutValue(0, bit_mask)
             elif self.tube_move_right_Event.is_set():
-                print("right")
                 DPxSetDoutValue(0 << 2 | 1 << 4, bit_mask)
             DPxUpdateRegCache()
 
