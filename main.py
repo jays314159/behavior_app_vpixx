@@ -25,12 +25,12 @@ class MainGui(QMainWindow):
     def __init__(self, parent = None):
         super(MainGui,self).__init__(parent)
         multiprocessing.set_start_method('spawn') # start child process that isn't a copy of the main one
-        
+
         # Build menu
         self.menubar = self.menuBar()
         self.menu_exp = self.menubar.addMenu('Experiment')
         self.menu_cal = self.menubar.addMenu('Calibration')
-        
+
         # Actions
         self.simple_sac_QAction = QAction('Simple Saccade',self)
         self.menu_exp.addAction(self.simple_sac_QAction)
@@ -42,7 +42,7 @@ class MainGui(QMainWindow):
         self.menu_cal.addAction(self.cal_QAction)
         self.refine_cal_QAction = QAction('Refinement',self)
         self.menu_cal.addAction(self.refine_cal_QAction)
-        
+
         # Setting GUI
         self.main_QWidget = QWidget()
         self.setCentralWidget(self.main_QWidget)
@@ -55,12 +55,12 @@ class MainGui(QMainWindow):
         self.lock_QPushButton = QPushButton('Lock')
         self.lock_QPushButton.setDisabled(True)
         self.lock_unlock_QHBoxLayout.addWidget(self.lock_QPushButton)
-        
+
         self.main_separator_0_QFrame = QFrame()
         self.main_QVBoxLayout.addWidget(self.main_separator_0_QFrame)
         self.main_separator_0_QFrame.setFrameShape(QFrame.HLine)
         self.main_separator_0_QFrame.setFrameShadow(QFrame.Raised)
-        
+
         self.monitor_QLabel = QLabel("<b>Monitor info</b>")
         self.main_QVBoxLayout.addWidget(self.monitor_QLabel)
         self.monitor_QLabel.font().setPointSize(12)
@@ -133,12 +133,12 @@ class MainGui(QMainWindow):
         self.monitor_width_QDoubleSpinBox.setDecimals(0)
         self.monitor_rate_QHBoxLayout = QHBoxLayout()
         self.main_QVBoxLayout.addLayout(self.monitor_rate_QHBoxLayout)
-        
+
         self.main_separator_1_QFrame = QFrame()
         self.main_QVBoxLayout.addWidget(self.main_separator_1_QFrame)
         self.main_separator_1_QFrame.setFrameShape(QFrame.HLine)
         self.main_separator_1_QFrame.setFrameShadow(QFrame.Raised)
-        
+
         self.which_eye_QHBoxLayout = QHBoxLayout()
         self.main_QVBoxLayout.addLayout(self.which_eye_QHBoxLayout)
         self.which_eye_QLabel = QLabel('Which eye to track: ')
@@ -148,12 +148,12 @@ class MainGui(QMainWindow):
         self.which_eye_QHBoxLayout.addWidget(self.which_eye_QComboBox)
         self.which_eye_QComboBox.addItems(['Left', 'Right'])
         self.which_eye_QComboBox.setToolTip('Depending on device and mirror configuration, the side may be flipped')
-        
+
         self.main_separator_2_QFrame = QFrame()
         self.main_QVBoxLayout.addWidget(self.main_separator_2_QFrame)
         self.main_separator_2_QFrame.setFrameShape(QFrame.HLine)
         self.main_separator_2_QFrame.setFrameShadow(QFrame.Raised)
-        
+
         self.monkey_QHBoxLayout = QHBoxLayout()
         self.main_QVBoxLayout.addLayout(self.monkey_QHBoxLayout)
         self.monkey_QLabel = QLabel('Monkey: ')
@@ -167,12 +167,12 @@ class MainGui(QMainWindow):
         self.monkey_QHBoxLayout.addWidget(self.monkey_QLineEdit)
         self.monkey_add_QPushButton = QPushButton('Add')
         self.monkey_QHBoxLayout.addWidget(self.monkey_add_QPushButton)
-        
+
         self.main_separator_3_QFrame = QFrame()
         self.main_QVBoxLayout.addWidget(self.main_separator_3_QFrame)
         self.main_separator_3_QFrame.setFrameShape(QFrame.HLine)
         self.main_separator_3_QFrame.setFrameShadow(QFrame.Raised)
-        
+
         self.sys_password_QHBoxLayout = QHBoxLayout()
         self.main_QVBoxLayout.addLayout(self.sys_password_QHBoxLayout)
         self.sys_password_QLabel = QLabel('System password: ')
@@ -182,20 +182,20 @@ class MainGui(QMainWindow):
         self.sys_password_QLineEdit = QLineEdit()
         self.sys_password_QHBoxLayout.addWidget(self.sys_password_QLineEdit)
         self.sys_password_QLineEdit.setToolTip('Needed to empty Linux log files')
-        
+
         self.main_separator_4_QFrame = QFrame()
         self.main_QVBoxLayout.addWidget(self.main_separator_4_QFrame)
         self.main_separator_4_QFrame.setFrameShape(QFrame.HLine)
         self.main_separator_4_QFrame.setFrameShadow(QFrame.Raised)
-        
+
         self.main_QVBoxLayout.addWidget(QLabel('Restart exp. window to apply the settings; they are automatically saved.'))
-        
+
         self.log_QPlainTextEdit = QPlainTextEdit()
         self.log_QPlainTextEdit.setReadOnly(True)
         self.main_QVBoxLayout.addWidget(self.log_QPlainTextEdit)
-        
+
         self.lock_parameter() # to prevent accidental changes
-        
+
         # Load and set parameters
         self.mon_parameter, self.mon_parameter_file_path = lib.load_parameter('','monitor_setting.json',False,False,self.set_default_mon_parameter)
         self.monitor_name_QLineEdit.setText(self.mon_parameter['monitor_name'])
@@ -207,13 +207,13 @@ class MainGui(QMainWindow):
         self.monitor_size_vert_QDoubleSpinBox.setValue(self.mon_parameter['monitor_size'][1])
         self.monitor_dist_QDoubleSpinBox.setValue(self.mon_parameter['monitor_distance'])
         self.monitor_width_QDoubleSpinBox.setValue(self.mon_parameter['monitor_width'])
-        
+
         self.main_parameter, self.main_parameter_file_path = lib.load_parameter('','main_parameter.json',False,False,self.set_default_parameter)
         for monkey_id in self.main_parameter['monkey']:
             self.monkey_QComboBox.addItem(monkey_id)
         self.monkey_QComboBox.setCurrentText(self.main_parameter['current_monkey'])
         self.sys_password_QLineEdit.setText(self.main_parameter['sys_password'])
-        
+
         self.cal_parameter,self.cal_parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.monkey_QComboBox.currentText())
         self.which_eye_QComboBox.setCurrentText(self.cal_parameter['which_eye_tracked'])
     #%% Signals
@@ -222,11 +222,11 @@ class MainGui(QMainWindow):
         self.tube_move_QAction.triggered.connect(self.tube_move_QAction_triggered)
         self.cal_QAction.triggered.connect(self.cal_QAction_triggered)
         self.refine_cal_QAction.triggered.connect(self.refine_cal_QAction_triggered)
-        
+
         self.monitor_total_num_QSpinBox.valueChanged.connect(self.monitor_total_num_QSpinBox_valueChanged)
         self.monitor_num_test_QPushButton.clicked.connect(self.monitor_num_test_QPushButton_clicked)
         self.monitor_num_close_QPushButton.clicked.connect(self.monitor_num_close_QPushButton_clicked)
-        
+
         self.monkey_QComboBox.currentTextChanged.connect(self.monkey_QComboBox_currentTextChanged)
         self.monkey_add_QPushButton.clicked.connect(self.monkey_add_QPushButton_clicked)
         self.monkey_delete_QPushButton.clicked.connect(self.monkey_delete_QPushButton_clicked)
@@ -241,40 +241,10 @@ class MainGui(QMainWindow):
         if cmd_output != 0:
             self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
             return
-        
+
         self.save_parameter()
-        
-        # Create a separate process for finite state machine (FSM) to run exp. and 
-        # for GUI to control it.
-        # Using Pipe to transfer data btwn processes.
-        # Using Event to control stop and start of the experiment
-        stop_exp_Event = multiprocessing.Event()
-        stop_exp_Event.set()
-        stop_fsm_process_Event = multiprocessing.Event()
-        fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False) 
-        gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
-        
-        real_time_data_Array = multiprocessing.Array('d', range(5))
-        exp_name = 'simple_saccade'
-        fsm_process = SimpleSacFsmProcess(exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter, self.mon_parameter)
-        gui_process = SimpleSacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
-        
-        fsm_process.start()
-        time.sleep(0.25) # without this artificial delay, sometimes causes error
-        gui_process.start()
-        
-    def corr_sac_QAction_triggered(self):
-        # Empty Linux log files; communication with tracker fills up the files, eventually crashing
-        sys_password = self.sys_password_QLineEdit.text()
-        cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
-        os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog.1'" % (sys_password))
-        if cmd_output != 0:
-            self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
-            return
-        
-        self.save_parameter()
-        
-        # Create a separate process for finite state machine (FSM) to run exp. and 
+
+        # Create a separate process for finite state machine (FSM) to run exp. and
         # for GUI to control it.
         # Using Pipe to transfer data btwn processes.
         # Using Event to control stop and start of the experiment
@@ -283,12 +253,42 @@ class MainGui(QMainWindow):
         stop_fsm_process_Event = multiprocessing.Event()
         fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False)
         gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
-        
+
+        real_time_data_Array = multiprocessing.Array('d', range(5))
+        exp_name = 'simple_saccade'
+        fsm_process = SimpleSacFsmProcess(exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter, self.mon_parameter)
+        gui_process = SimpleSacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
+
+        fsm_process.start()
+        time.sleep(0.25) # without this artificial delay, sometimes causes error
+        gui_process.start()
+
+    def corr_sac_QAction_triggered(self):
+        # Empty Linux log files; communication with tracker fills up the files, eventually crashing
+        sys_password = self.sys_password_QLineEdit.text()
+        cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
+        os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog.1'" % (sys_password))
+        if cmd_output != 0:
+            self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
+            return
+
+        self.save_parameter()
+
+        # Create a separate process for finite state machine (FSM) to run exp. and
+        # for GUI to control it.
+        # Using Pipe to transfer data btwn processes.
+        # Using Event to control stop and start of the experiment
+        stop_exp_Event = multiprocessing.Event()
+        stop_exp_Event.set()
+        stop_fsm_process_Event = multiprocessing.Event()
+        fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False)
+        gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
+
         real_time_data_Array = multiprocessing.Array('d', range(5))
         exp_name = 'random_corrective_saccades'
         fsm_process = CorrSacFsmProcess(exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter, self.mon_parameter)
         gui_process = CorrSacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
-                            
+
         fsm_process.start()
         time.sleep(0.25) # without this artificial delay, sometimes causes error
         gui_process.start()
@@ -311,6 +311,9 @@ class MainGui(QMainWindow):
         stop_exp_Event = multiprocessing.Event()
         stop_exp_Event.set()
         stop_fsm_process_Event = multiprocessing.Event()
+        tube_move_left_Event = multiprocessing.Event()
+        tube_move_right_Event = multiprocessing.Event()
+        tube_move_center_Event = multiprocessing.Event()
         fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False)
         gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
 
@@ -318,14 +321,17 @@ class MainGui(QMainWindow):
         exp_name = "tube_move"
         fsm_process = TubeMoveFsmProcess(exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event,
                                         stop_fsm_process_Event, real_time_data_Array, self.main_parameter,
+                                        tube_move_left_Event, tube_move_right_Event, tube_move_center_Event,
                                         self.mon_parameter)
         gui_process = TubeMoveGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event,
-                                        stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
+                                        stop_fsm_process_Event, real_time_data_Array,
+                                        tube_move_left_Event, tube_move_right_Event, tube_move_center_Event,
+                                        self.main_parameter)
 
         fsm_process.start()
         time.sleep(0.25)  # without this artificial delay, sometimes causes error
         gui_process.start()
-    
+
     def cal_QAction_triggered(self):
         # Empty Linux log files; communication with tracker fills up the files, eventually crashing
         sys_password = self.sys_password_QLineEdit.text()
@@ -334,10 +340,10 @@ class MainGui(QMainWindow):
         if cmd_output != 0:
             self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
             return
-        
+
         self.save_parameter()
-        
-        # Create a separate process for finite state machine (FSM) to run exp. and 
+
+        # Create a separate process for finite state machine (FSM) to run exp. and
         # for GUI to control it.
         # Using Pipe to transfer data btwn processes.
         # Using Event to control stop and start of the experiment
@@ -346,17 +352,17 @@ class MainGui(QMainWindow):
         stop_fsm_process_Event = multiprocessing.Event()
         fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False)
         gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
-        
+
         real_time_data_Array = multiprocessing.Array('d', range(4))
         cal_name = 'calibration'
         fsm_process = CalFsmProcess(cal_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter, self.mon_parameter)
         gui_process = CalGuiProcess(cal_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
-        
+
         fsm_process.start()
         time.sleep(0.25) # without this artificial delay, sometimes causes error
         gui_process.start()
-    
-    def refine_cal_QAction_triggered(self):    
+
+    def refine_cal_QAction_triggered(self):
         # Empty Linux log files; communication with tracker fills up the files, eventually crashing
         sys_password = self.sys_password_QLineEdit.text()
         cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
@@ -364,10 +370,10 @@ class MainGui(QMainWindow):
         if cmd_output != 0:
             self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
             return
-        
+
         self.save_parameter()
-        
-        # Create a separate process for finite state machine (FSM) to run exp. and 
+
+        # Create a separate process for finite state machine (FSM) to run exp. and
         # for GUI to control it.
         # Using Pipe to transfer data btwn processes.
         # Using Event to control stop and start of the experiment
@@ -376,22 +382,22 @@ class MainGui(QMainWindow):
         stop_fsm_process_Event = multiprocessing.Event()
         fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False)
         gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
-        
+
         real_time_data_Array = multiprocessing.Array('d', range(5))
         cal_name = 'refinement'
         fsm_process = CalRefineFsmProcess(cal_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter, self.mon_parameter)
         gui_process = CalRefineGuiProcess(cal_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
-        
+
         fsm_process.start()
         time.sleep(0.25) # without this artificial delay, sometimes causes error
         gui_process.start()
-        
+
     def monitor_total_num_QSpinBox_valueChanged(self):
         self.monitor_num_QComboBox.clear()
         for i in range(self.monitor_total_num_QSpinBox.value()):
             self.monitor_num_QComboBox.addItem(str(i+1))
         self.monitor_num_QComboBox.setCurrentText('1')
-        
+
     def monitor_num_test_QPushButton_clicked(self):
         self.monitor_num_test_QPushButton.setDisabled(True)
         self.monitor_num_close_QPushButton.setEnabled(True)
@@ -404,7 +410,7 @@ class MainGui(QMainWindow):
         self.monitor_num_test_QPushButton.setEnabled(True)
         self.monitor_num_close_QPushButton.setDisabled(True)
         self.window.close()
-    
+
     def monkey_add_QPushButton_clicked(self):
         monkey_id = self.monkey_QLineEdit.text().upper()
         # Add if not already present
@@ -425,17 +431,17 @@ class MainGui(QMainWindow):
             all_parameter.pop(self.monkey_QComboBox.currentText(),'')
             with open(self.cal_parameter_file_path,'w') as file:
                 json.dump(all_parameter, file, indent=4)
-                
+
             try:
                 parameter_path = os.path.join(str(Path().absolute()),'experiment','exp_parameter.json')
                 with open(parameter_path, 'r') as file:
                     all_parameter = json.load(file)
-                all_parameter.pop(self.monkey_QComboBox.currentText(),'')    
+                all_parameter.pop(self.monkey_QComboBox.currentText(),'')
                 with open(parameter_path, 'w') as file:
                     json.dump(all_parameter, file, indent=4)
             except:
                 pass
-            
+
             self.monkey_QComboBox.removeItem(self.monkey_QComboBox.currentIndex())
         else:
             self.log_QPlainTextEdit.appendPlainText('At least one ID required')
@@ -443,7 +449,7 @@ class MainGui(QMainWindow):
         self.cal_parameter,self.cal_parameter_file_path = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.monkey_QComboBox.currentText())
         self.which_eye_QComboBox.setCurrentText(self.cal_parameter['which_eye_tracked'])
         self.main_parameter['current_monkey'] = self.monkey_QComboBox.currentText()
-        
+
     def save_parameter(self):
         self.mon_parameter['monitor_name'] = self.monitor_name_QLineEdit.text()
         self.mon_parameter['num_monitor'] = self.monitor_total_num_QSpinBox.value()
@@ -465,10 +471,10 @@ class MainGui(QMainWindow):
         self.main_parameter['monkey'] = []
         for counter_id in range(self.monkey_QComboBox.count()):
             self.main_parameter['monkey'].append(self.monkey_QComboBox.itemText(counter_id))
-        
+
         with open(self.main_parameter_file_path,'w') as file:
             json.dump(self.main_parameter, file, indent=4)
-    
+
     def lock_parameter(self):
         self.lock_QPushButton.setDisabled(True)
         self.unlock_QPushButton.setEnabled(True)
@@ -483,7 +489,7 @@ class MainGui(QMainWindow):
         self.monkey_delete_QPushButton.setDisabled(True)
         self.monkey_add_QPushButton.setDisabled(True)
         self.sys_password_QLineEdit.setDisabled(True)
-        
+
     def unlock_parameter(self):
         self.lock_QPushButton.setEnabled(True)
         self.unlock_QPushButton.setDisabled(True)
@@ -498,7 +504,7 @@ class MainGui(QMainWindow):
         self.monkey_delete_QPushButton.setEnabled(True)
         self.monkey_add_QPushButton.setEnabled(True)
         self.sys_password_QLineEdit.setEnabled(True)
-        
+
     def set_default_mon_parameter(self):
         parameter = {
                  'monitor_name': 'behave',
@@ -508,9 +514,9 @@ class MainGui(QMainWindow):
                  'monitor_distance': 85.0,
                  'monitor_width': 70.0,
                  }
-    
+
         return parameter
-    
+
     def set_default_parameter(self):
         parameter = {
                      'monkey': ['0000'],
@@ -518,15 +524,15 @@ class MainGui(QMainWindow):
                      'sys_password': '123456'
                      }
         return parameter
-    
+
     def closeEvent(self,event):
         try:
-            pg.exit() # this should come at the end 
+            pg.exit() # this should come at the end
         except:
             pass
-        
+
 if __name__ == '__main__':
-    if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):        
+    if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):
         main_app = QApplication(sys.argv)
         main_app.setWindowIcon(QtGui.QIcon(os.path.join('.', 'icon', 'marmoset.png')))
         main_app_gui = MainGui()

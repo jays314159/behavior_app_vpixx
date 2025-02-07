@@ -46,6 +46,9 @@ class TubeMoveFsmProcess(multiprocessing.Process):
         stop_fsm_process_event,
         real_time_data_array,
         main_parameter,
+        tube_move_left_Event,
+        tube_move_right_Event,
+        tube_move_center_Event,
         mon_parameter,
     ):
         super().__init__()
@@ -56,6 +59,9 @@ class TubeMoveFsmProcess(multiprocessing.Process):
         self.stop_fsm_process_event = stop_fsm_process_event
         self.real_time_data_array = real_time_data_array
         self.main_parameter = main_parameter
+        self.tube_move_left_Event = tube_move_left_Event
+        self.tube_move_right_Event = tube_move_right_Event
+        self.tube_move_center_Event = tube_move_center_Event
         self.mon_parameter = mon_parameter
 
         self.window = None
@@ -104,8 +110,8 @@ class TubeMoveFsmProcess(multiprocessing.Process):
 
         run_exp = False
         random_signal_t = math.nan
+        bit_mask = 1 << 2 | 1 << 4
         # Process loop
-        print("bp 1")
         while not self.stop_fsm_process_event.is_set():
             if not self.stop_exp_event.is_set():
                 # Turn on VPixx schedule; this needed to collect data
@@ -126,10 +132,17 @@ class TubeMoveFsmProcess(multiprocessing.Process):
                 random_signal_t = self.t
 
                 run_exp = True
+
+            if self.tube_move_left_Event.is_set():
+                DPxSetDoutValue(1 << 2 | 0 << 4, bit_mask)
+            elif self.tube_move_center_Event.is_set():
+                DPxSetDoutValue(0, bit_mask)
+            elif self.tube_move_right_Event.is_set():
+                DPxSetDoutValue(0 << 2 | 1 << 4, bit_mask)
+            DPxUpdateRegCache()
+
             # Trial loop
-            print("bp 2")
             while not self.stop_fsm_process_event.is_set() and run_exp:
-                print("bp 3")
                 if self.stop_exp_event.is_set():
                     run_exp = False
                     self.t = math.nan
@@ -140,8 +153,7 @@ class TubeMoveFsmProcess(multiprocessing.Process):
                     break
 
                 # FSM loop
-                while not self.stop_fsm_process_event.is_set() and run_exp:
-                    print("bp 4")
+                while not self.stop_fsm_process_event.is_set() and run_exp
                     if self.stop_exp_event.is_set():
                         run_exp = False
                         self.t = math.nan
@@ -151,7 +163,6 @@ class TubeMoveFsmProcess(multiprocessing.Process):
                         self.window.flip()
                         break
                     # Send random signal for alignment
-                    print("bp 5")
                     if (self.t - random_signal_t) > random_signal_flip_duration:
                         random_signal_t = self.t
                         if random.random() > 0.5:
@@ -213,6 +224,9 @@ class TubeMoveGui(FsmGui):
         stop_exp_event,
         stop_fsm_process_event,
         real_time_data_array,
+        tube_move_left_Event,
+        tube_move_right_Event,
+        tube_move_center_Event,
         main_parameter,
     ):
         self.exp_name = exp_name
@@ -221,6 +235,9 @@ class TubeMoveGui(FsmGui):
         self.stop_exp_event = stop_exp_event
         self.stop_fsm_process_event = stop_fsm_process_event
         self.real_time_data_array = real_time_data_array
+        self.tube_move_left_Event = tube_move_left_Event
+        self.tube_move_right_Event = tube_move_right_Event
+        self.tube_move_center_Event = tube_move_center_Event
         self.main_parameter = main_parameter
         super().__init__(self.stop_fsm_process_event)
         self.__init_gui__()
@@ -281,14 +298,18 @@ class TubeMoveGui(FsmGui):
         Returns:
 
         """
-        bit_mask = 1 << 2 | 1 << 4
         if direction == "left":
-            DPxSetDoutValue(1 << 2 | 0 << 4, bit_mask)
+            self.tube_move_right_Event.clear()
+            self.tube_move_center_Event.clear()
+            self.tube_move_left_Event.set()
         elif direction == "center":
-            DPxSetDoutValue(0, bit_mask)
+            self.tube_move_right_Event.clear()
+            self.tube_move_left_Event.clear()
+            self.tube_move_center_Event.set()
         elif direction == "right":
-            DPxSetDoutValue(0 << 2 | 1 << 4, bit_mask)
-        DPxUpdateRegCache()
+            self.tube_move_left_Event.clear()
+            self.tube_move_center_Event.clear()
+            self.tube_move_right_Event.set()
 
     def __init_gui__(self):
         # Disable plots
@@ -330,6 +351,9 @@ class TubeMoveGuiProcess(multiprocessing.Process):
         stop_exp_event,
         stop_fsm_process_event,
         real_time_data_array,
+        tube_move_left_Event,
+        tube_move_right_Event,
+        tube_move_center_Event,
         main_parameter,
         parent=None,
     ):
@@ -341,6 +365,9 @@ class TubeMoveGuiProcess(multiprocessing.Process):
         self.real_time_data_array = real_time_data_array
         self.stop_fsm_process_event = stop_fsm_process_event
         self.main_parameter = main_parameter
+        self.tube_move_left_Event = tube_move_left_Event
+        self.tube_move_right_Event = tube_move_right_Event
+        self.tube_move_center_Event = tube_move_center_Event
 
     def run(self):
         app = QApplication(sys.argv)
@@ -351,6 +378,9 @@ class TubeMoveGuiProcess(multiprocessing.Process):
             self.stop_exp_event,
             self.stop_fsm_process_event,
             self.real_time_data_array,
+            self.tube_move_left_Event,
+            self.tube_move_right_Event,
+            self.tube_move_center_Event,
             self.main_parameter,
         )
         app_gui.setWindowIcon(
