@@ -110,7 +110,7 @@ class TubeMoveFsmProcess(multiprocessing.Process):
 
         run_exp = False
         random_signal_t = math.nan
-        bit_mask = 1 << 1 | 1 << 3
+        bit_mask = 1 << 8 | 1 << 10
         # Process loop
         while not self.stop_fsm_process_event.is_set():
             if not self.stop_exp_event.is_set():
@@ -134,11 +134,11 @@ class TubeMoveFsmProcess(multiprocessing.Process):
                 run_exp = True
 
             if self.tube_move_left_Event.is_set():
-                DPxSetDoutValue(1 << 1, bit_mask)
+                DPxSetDoutValue(1 << 8, bit_mask)
             elif self.tube_move_center_Event.is_set():
                 DPxSetDoutValue(0, bit_mask)
             elif self.tube_move_right_Event.is_set():
-                DPxSetDoutValue(1 << 3, bit_mask)
+                DPxSetDoutValue(1 << 10, bit_mask)
             DPxUpdateRegCache()
 
             # Trial loop
