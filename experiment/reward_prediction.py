@@ -117,8 +117,8 @@ class RwdPredFsmProcess(multiprocessing.Process):
                 # fsm_parameter, parameter_file_path = lib.load_parameter('experiment','exp_parameter.json',True,True,RwdPredGui.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
                 # cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])     
                 # self.rew_tgt_size = fsm_parameter['rew_tgt_size']
-                # self.update_target()
-                self.window.clearBuffer()
+                self.update_target()
+                # self.window.clearBuffer()
                 # Load exp parameter
                 fsm_parameter, parameter_file_path = lib.load_parameter('experiment','exp_parameter.json',True,True,RwdPredGui.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
                 cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])        
@@ -821,7 +821,7 @@ class RwdPredFsmProcess(multiprocessing.Process):
     def update_target(self):
         tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'tgt')
         pd_tgt_parameter,_ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'pd_tgt')
-        fsm_parameter, _ = lib.load_parameter('experiment','exp_parameter.json',True,True,RwdPredGui.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
+        # fsm_parameter, _ = lib.load_parameter('experiment','exp_parameter.json',True,True,RwdPredGui.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
         self.tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg', 
                       lineColor=tgt_parameter['line_color'],fillColor=tgt_parameter['fill_color'],
                       lineWidth=tgt_parameter['line_width'])
