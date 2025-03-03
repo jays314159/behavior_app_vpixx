@@ -716,8 +716,8 @@ class CalRefineGui(FsmGui):
     #%% GUI
     def init_gui(self):
         # Disable pumps
-        self.pump_1.deleteLater()
-        self.pump_2.deleteLater()
+        self.pump['1'].deleteLater()
+        self.pump['2'].deleteLater()
         # Add in pump functions; send command to plotting computer
         self.sidepanel_pump_QWidget = QWidget()
         self.sidepanel_QTabWidget.addTab(self.sidepanel_pump_QWidget, 'Pump')
