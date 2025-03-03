@@ -118,6 +118,7 @@ class RwdPredFsmProcess(multiprocessing.Process):
                 # cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])     
                 # self.rew_tgt_size = fsm_parameter['rew_tgt_size']
                 # self.update_target()
+                self.window.clearBuffer()
                 # Load exp parameter
                 fsm_parameter, parameter_file_path = lib.load_parameter('experiment','exp_parameter.json',True,True,RwdPredGui.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
                 cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])        
@@ -237,7 +238,7 @@ class RwdPredFsmProcess(multiprocessing.Process):
                             eye_x_data.append(self.eye_x)
                             eye_y_data.append(self.eye_y)
                             if len(vel_t_data)==vel_samp_num:
-                                
+
                                 eye_vel[0] = np.mean(np.diff(eye_x_data)/np.diff(vel_t_data))
                                 eye_vel[1] = np.mean(np.diff(eye_y_data)/np.diff(vel_t_data))
                                 eye_speed = np.sqrt(eye_vel[0]**2 + eye_vel[1]**2)
