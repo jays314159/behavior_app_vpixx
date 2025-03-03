@@ -485,7 +485,7 @@ class RwdPredFsmProcess(multiprocessing.Process):
                         state_inter_time = self.t
                         self.trial_data['state_start_t_detect_sac_start'].append(self.t)
                         state = 'DETECT_SACCADE_START'
-                        print('state = DETECT_SACCADE_START')
+                        # print('state = DETECT_SACCADE_START')
                     
                     if state == 'DETECT_SACCADE_START':
                         eye_dist_from_start_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
@@ -593,7 +593,7 @@ class RwdPredFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_detect_sac_end'].append(self.t)
                             state = 'DETECT_SACCADE_END'
-                            print('state = DETECT_SACCADE_END')
+                            # print('state = DETECT_SACCADE_END')
                     
                     if state == 'DETECT_SACCADE_END':
                         if (eye_speed < fsm_parameter['sac_on_off_threshold']) and (self.t-state_start_time > 0.005):#25):
@@ -705,7 +705,7 @@ class RwdPredFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_trial_success'].append(self.t)
                             self.window.flip() # remove all targets
                             state = 'TRIAL_SUCCESS'
-                            print('state = TRIAL_SUCCESS')
+                            # print('state = TRIAL_SUCCESS')
                         # If time runs out before fixation finished, reset the trial
                         # No explicit fixation required
                         elif (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
