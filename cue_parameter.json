@@ -1,0 +1,21 @@
+{
+    "arrow": {
+        "cue_length": 1.5,
+        "cue_width":0.4,
+        "circle_size":0.7,
+        "fill_color": [0.6,0.6,0.6],
+        "line_color": "black",
+        "circle_color":"black",
+        "line_width":3,
+        "coherence":[0.8,0.2,0.0]
+    },
+    "landolt": {
+        "size": 1.5,
+        "line_width":0.5,
+        "line_color": "black",
+        "rect_color": "white",
+        "rect_width": 1.5,
+        "rect_height": 0.2,
+        "coherence":[1.0,0.5,0]
+    }
+}

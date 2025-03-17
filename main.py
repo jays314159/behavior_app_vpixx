@@ -15,6 +15,7 @@ from experiment.simple_saccade import SimpleSacGuiProcess, SimpleSacFsmProcess
 from experiment.corr_saccade import CorrSacGuiProcess, CorrSacFsmProcess
 from experiment.opto_simple_saccade import OptoSimpleSacGuiProcess, OptoSimpleSacFsmProcess
 from experiment.reward_prediction import RwdPredGuiProcess, RwdPredFsmProcess
+from experiment.delay_saccade import DelaySacEyeProcess, DelaySacFsmProcess, DelaySacGuiProcess
 from target import TargetWidget
 import app_lib as lib
 
@@ -45,6 +46,8 @@ class MainGui(QMainWindow):
         self.menu_cal.addAction(self.refine_cal_QAction)
         self.reward_prediction_QAction = QAction('Reward Prediction',self)
         self.menu_exp.addAction(self.reward_prediction_QAction)
+        self.delay_saccade_QAction = QAction('Delay Saccade',self)
+        self.menu_exp.addAction(self.delay_saccade_QAction)
         
         # Setting GUI
         self.main_QWidget = QWidget()
@@ -349,6 +352,49 @@ class MainGui(QMainWindow):
         fsm_process = RwdPredFsmProcess(exp_name, fsm_to_gui_sndr, gui_to_fsm_rcvr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter, self.mon_parameter)
         gui_process = RwdPredGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, real_time_data_Array, self.main_parameter)
                    
+        fsm_process.start()
+        time.sleep(0.25)
+        gui_process.start()
+        
+    def delay_saccade_QAction_triggered(self):
+        sys_password = self.sys_password_QLineEdit.text()
+        cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
+        os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog.1'" % (sys_password))
+        if cmd_output != 0:
+            self.log_QPlainTextEdit.appendPlainText("Input correct password to clear log files and try again")
+            return
+        
+        self.save_parameter()
+        
+        stop_exp_Event = multiprocessing.Event()
+        stop_exp_Event.set()
+        stop_fsm_process_Event = multiprocessing.Event()
+        data_change_Event = multiprocessing.Event()
+        end_trial_Event = multiprocessing.Event()
+        mouse_toggle_Event = multiprocessing.Event()
+        #no_tracker_Event = multiprocessing.Event()
+        mouse_toggle_Event.clear()
+        
+        data_ch_1 = multiprocessing.Value('i',1)
+        data_ch_5 = multiprocessing.Value('i',1)
+        data_ch_change = multiprocessing.Event()
+        
+       	data_rcvr,data_sndr = multiprocessing.Pipe(duplex=False)
+       	
+       	fsm_to_gui_rcvr, fsm_to_gui_sndr = multiprocessing.Pipe(duplex=False)
+        gui_to_fsm_rcvr, gui_to_fsm_sndr = multiprocessing.Pipe(duplex=False)
+        
+       	real_time_data_Array = multiprocessing.Array('d', range(5))
+       	eye_data_Array = multiprocessing.Array('d',range(5))
+       	exp_name='delay_saccade'
+        fsm_process = DelaySacFsmProcess(exp_name,fsm_to_gui_sndr, gui_to_fsm_rcvr, data_rcvr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,mouse_toggle_Event,real_time_data_Array,eye_data_Array, data_ch_1,data_ch_5,data_change_event, self.main_parameter,self.mon_parameter)
+        
+        eye_process = DelaySacEyeProcess(exp_name,data_sndr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,eye_data_Array, data_ch_1,data_ch_5,data_change_event,self.main_parameter,self.mon_parameter)
+        
+        gui_process = DelaySacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, mouse_toggle_Event, real_time_data_Array, self.main_parameter)
+        
+        eye_process.start()
+        time.sleep(0.25)
         fsm_process.start()
         time.sleep(0.25)
         gui_process.start()        
