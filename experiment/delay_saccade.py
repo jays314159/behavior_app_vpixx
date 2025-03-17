@@ -97,38 +97,28 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 old_t = 0;
                 
                 dout_ch_3 = 0 # random signal
-                DPxSetDoutValue(self.dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5, bitMask)
-                DPxUpdateRegCache()
-               
-            if not self.mouse_mode:
-            	eye_data = eye_tracker.getNewestSample()
-            if not self.mouse_mode and eye_data is not None:
-                if eye_data.getTime() != old_t:
-                    new_data_received = True
-                
-                    old_t = eye_data.getTime()
-                    self.t = old_t/1000   
-                    # # Left eye sample
-                    # raw_eye_left = eye_data.getLeftEye()
-                    # raw_eye_pos_left = raw_eye_left.getRawPupil()
-                    # raw_eye_pupil_left = raw_eye_left.getPupilSize()
-                    # left_eye_blink = (int(raw_eye_pos_left[0]) == -32768) # if -32768, blink or data missing
-                                
-                    # Right eye sample
-                    raw_eye_right = eye_data.getRightEye()
-                    raw_eye_pos_right = raw_eye_right.getRawPupil()
-                    raw_eye_pupil_right = raw_eye_right.getPupilSize()
-                    right_eye_blink = (raw_eye_pos_right[0] == -32768)
+                with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
+                    DPxSetDoutValue(self.dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5, bitMask)
+                    DPxUpdateRegCache()
                     
-                    self.trial_data['eye_x_data'].append(self.eye_x)
-                    self.trial_data['eye_y_data'].append(self.eye_y)
-                    self.trial_data['eye_time_data'].append(self.t)
-                
-                    eye_blink = False
+            if (self.t - random_signal_t) > random_signal_flip_duration:
+                random_signal_t = self.t
+                if random.random() > 0.5:
+                    dout_ch_3 = 1 
+                else:
+                    dout_ch_3 = 0
+                    
+            self.t = TPxBestPolyGetEyePosition(cal_data, raw_data)
+               
+            # Fix indentation
+                    # Get eye status (blinking)
+                    eye_status = DPxGetReg16(0x59A)
+                    right_eye_blink = bool(eye_status & (1 << 0)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
+                    left_eye_blink = bool(eye_status & (1 << 1)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
                     if cal_parameter['which_eye_tracked'] == 'Right':
                         if not right_eye_blink:
                             eye_blink = False
-                            raw_data_right = [raw_eye_pos_right[0], raw_eye_pos_right[1],1] 
+                            raw_data_right = [raw_data[0], raw_data[1],1] # [(animal's) right x, right y (pink), left x, left y (cyan)]
                             eye_pos = lib.raw_to_deg(raw_data_right,cal_parameter['right_cal_matrix'])
                             self.eye_x = eye_pos[0]
                             self.eye_y = eye_pos[1]
@@ -147,7 +137,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
                     else:
                         if not left_eye_blink:
                             eye_blink = False
-                            raw_data_left = [raw_eye_pos_left[0], raw_eye_pos_left[1],1] 
+                            raw_data_left = [raw_data[2], raw_data[3],1] # [(animal's) right x, right y (pink), left x, left y (cyan)]
                             eye_pos = lib.raw_to_deg(raw_data_left,cal_parameter['left_cal_matrix'])
                             self.eye_x = eye_pos[0]
                             self.eye_y = eye_pos[1]
@@ -162,7 +152,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
                         else:
                             eye_blink = True
                             self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
-                            self.eye_y = 9999
+                            self.eye_y = 9999 
                             
                     with self.real_time_data_Array.get_lock():
                         self.real_time_data_Array[0] = self.t
@@ -178,8 +168,9 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 self.init_trial_data()
                 
             if self.data_ch_change.is_set():
-                DPxSetDoutValue(self.dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5, bitMask)
-                DPxUpdateRegCache()
+                with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
+                    DPxSetDoutValue(self.dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5, bitMask)
+                    DPxUpdateRegCache()
                 self.data_ch_change.clear()
                          
                         
