@@ -24,7 +24,7 @@ class PlotGui(FsmGui):
         self.ephys_restart_QAction = QAction(QtGui.QIcon(os.path.join('.', 'icon', 'restart.png')),'')
         self.ephys_restart_QAction.setToolTip('Restart network connection to Ephys')
         self.toolbar.addAction(self.ephys_restart_QAction)
-        self.ephys_restart_QAction.triggered.connect(self.ephys_restart_QAction_triggered)     
+        self.ephys_restart_QAction.triggered.connect(self.ephys_restart_QAction_triggered)
         self.ephys_QLabel = QLabel(' Ephys control: ')
         self.ephys_QCheckBox = QCheckBox()
         self.toolbar.addWidget(self.ephys_QLabel)
@@ -115,7 +115,7 @@ class PlotGui(FsmGui):
     def toolbar_run_QAction_triggered(self):
         self.flag_stop = 0
         if self.ephys_QCheckBox.isChecked():
-            
+
             # Control Open Ephys
             #port_num = 5555
             #try:
@@ -131,7 +131,7 @@ class PlotGui(FsmGui):
             #    self.log_QPlainTextEdit.appendPlainText(err_msg)
             #    self.open_ephys_connected = False
             #    self.open_ephys_started = False
-                            
+
             if self.open_ephys_connected:
                 try:
                     open_ephys_msg = f'StartRecord RecordNode=1 CreateNewDir=1 RecDir={self.data_path_QLineEdit.text()}'
