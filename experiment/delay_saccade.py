@@ -713,6 +713,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                             #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
                             self.window.flip()
+                            print('state = INCORRECT_SACCADE')
                             state = 'INCORRECT_SACCADE'                         
                         # If time runs out before saccade detected, play punishment sound and reset the trial
                         elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
@@ -724,6 +725,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
                             self.window.flip()
+                            print('state = STR_TARGET_PURSUIT')
                             state = 'STR_TARGET_PURSUIT'
                     
                     if state == 'SACCADE':
@@ -1088,14 +1090,13 @@ class DelaySacGui(FsmGui):
         try:
             context = zmq.Context()
             self.fsm_to_plot_socket = context.socket(zmq.PUB)
-            # self.fsm_to_plot_socket.bind("tcp://192.168.0.2:5556")
-            self.fsm_to_plot_socket.bind("tcp://*:5556")
+            self.fsm_to_plot_socket.bind("tcp://192.168.0.2:5556")
+            
             self.fsm_to_plot_priority_socket = context.socket(zmq.PUB)
-            # self.fsm_to_plot_priority_socket.bind("tcp://192.168.0.2:5557")
-            self.fsm_to_plot_priority_socket.bind("tcp://*:5557")
+            self.fsm_to_plot_priority_socket.bind("tcp://192.168.0.2:5557")
+            
             self.plot_to_fsm_socket = context.socket(zmq.SUB)
-            # self.plot_to_fsm_socket.connect("tcp://192.168.0.1:5558")
-            self.plot_to_fsm_socket.connect("tcp://localhost:5558")
+            self.plot_to_fsm_socket.connect("tcp://192.168.0.1:5558")
             self.plot_to_fsm_socket.subscribe("")
             self.plot_to_fsm_poller = zmq.Poller()
             self.plot_to_fsm_poller.register(self.plot_to_fsm_socket, zmq.POLLIN)

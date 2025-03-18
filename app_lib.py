@@ -257,6 +257,39 @@ def make_corr_target(parameter):
                              'corr_tgt_pos': [corr_tgt_x, corr_tgt_y]})
 
     return tgt_list
+    
+def make_corr_targets_independent(parameter):
+    '''
+    Arguments:
+    parameter - dictionary of parameters
+    Returns:
+    prim_tgt_list: a list containing the coordinates of primary targets uniformly distributed around a circle
+    corr_tgt_list: a separate list containing the coordinates of corrective targets, also uniformly distributed around a circle
+    '''
+    prim_tgt_list = []
+    corr_tgt_list = []
+    num_prim_sac_dir = parameter['num_prim_sac_dir']
+    prim_sac_amp = parameter['prim_sac_amp']
+    first_dir = parameter['first_prim_sac_dir']
+    num_corr_sac_dir = parameter['num_corr_sac_dir']
+    corr_sac_amp = parameter['corr_sac_amp']
+    
+    for prim_tgt_idx in range(num_prim_sac_dir):
+        prim_tgt_dir = 2*math.pi/num_prim_sac_dir*prim_tgt_idx + first_dir*math.pi/180
+        prim_tgt_x = prim_sac_amp*math.cos(prim_tgt_dir)
+        prim_tgt_y = prim_sac_amp*math.sin(prim_tgt_dir)
+        
+        prim_tgt_list.append({'prim_tgt_pos': [prim_tgt_x, prim_tgt_y]})
+        
+    for corr_tgt_idx in range(num_corr_sac_dir):
+        corr_tgt_dir = 2*math.pi/num_corr_sac_dir*corr_tgt_idx # There is no reason for corrective saccades to have a nonzero first direction
+        corr_tgt_x = corr_sac_amp*math.cos(corr_tgt_dir)
+        corr_tgt_y = corr_sac_amp*math.sin(corr_tgt_dir)
+        
+        corr_tgt_list.append({'corr_tgt_pos': [corr_tgt_x, corr_tgt_y]})
+        
+        
+    return prim_tgt_list,corr_tgt_list
 
 def raw_to_deg(raw_data, cal_matrix):
     '''
