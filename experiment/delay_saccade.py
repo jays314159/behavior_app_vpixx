@@ -100,6 +100,8 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 
                 dout_ch_3 = 0 # random signal
                 with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
+                    self.dout_ch_1.value = 1
+                    self.dout_ch_5.value = 1
                     DPxSetDoutValue(self.dout_ch_1.value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5.value, bitMask)
                     DPxUpdateRegCache()
                     
@@ -322,12 +324,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
                 if self.stop_exp_Event.is_set():
                     run_exp = False
-                    # # Save current trial data
-                    # self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
-                    # Close EyeLink host PC file
-                    #eyelink_worker.close_file(eye_tracker)
-                    #self.fsm_to_gui_sndr.send(('process_eyelink_data',eyelink_worker.data_dir_file_path, eyelink_worker.file_name))
-                    # Remove all targets
+
                     self.window.flip()
                     self.t = math.nan
                     break
@@ -341,31 +338,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 while not self.stop_fsm_process_Event.is_set() and run_exp:
                     if self.stop_exp_Event.is_set():
                         run_exp = False
-                        # # Save current trial data
-                        # self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
-                        # Close EyeLink host PC file
-                        #eyelink_worker.close_file(eye_tracker)
-                        #self.fsm_to_gui_sndr.send(('process_eyelink_data',eyelink_worker.data_dir_file_path, eyelink_worker.file_name))
-                        # Remove all targets
                         self.window.flip()
-                        
                         self.t = math.nan
                         break
                     # Send random signal for alignment
-                    '''
-                    if (self.t - random_signal_t) > random_signal_flip_duration:
-                        random_signal_t = self.t
-                        if random.random() > 0.5:
-                            dout_ch_1 = 1 
-                        else:
-                            dout_ch_1 = 0
-                    '''
-                    #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
-                    
-                    # Allow the mouse to manually simulate eye position for debugging purposes
-                    #print(self.mouse_mode)
-                    
-                    #print("FSM Loop")
+                    self.write_Dout(0,0)
                 
                     if self.mouse_mode:
                         t = time.time()
@@ -515,7 +492,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         state_start_time = self.t
                         state_inter_time = self.t
                         self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                        #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                        self.write_Dout(0,0)
+                        self.pd_tgt.draw()
+
                         self.window.flip()
                         state = 'STR_TARGET_PURSUIT'
                         print('state = STR_TARGET_PURSUIT')
@@ -528,6 +507,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         self.tgt_y = pursuit_y
                         self.tgt.pos = (self.tgt_x,self.tgt_y)
                         self.tgt.draw()
+                        self.pd_tgt.draw()
                         self.window.flip()
                         if (self.t-state_start_time) > fsm_parameter['pursuit_dur']:
                             state_start_time = self.t
@@ -536,7 +516,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state = 'STR_TARGET_PRESENT'
                             print('state = STR_TARGET_PRESENT')
                             self.tgt.draw()
-                            #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                            self.write_Dout(1,1)
+                            
                             self.window.flip()
                         # Every few seconds, send data to be saved
                         if self.t - self.send_data_t > 5:
@@ -563,7 +544,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                            #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                            self.write_Dout(0,0)
+                            self.pd_tgt.draw()
                             self.window.flip()
                             state = 'STR_TARGET_PURSUIT'
                             
@@ -579,15 +561,6 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             #self.tgt_x = self.cue_x
                             #self.tgt_y = self.cue_y
                                  
-                            '''
-                            self.tgt.pos = (self.tgt_x,self.tgt_y)               
-                            self.tgt.draw()
-                            dout_ch_0 = 0
-                            dout_ch_2 = 0
-                            #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
-                            self.window.flip()
-                            lib.playSound(1000,0.1) # neutral beep  
-                            '''
                             if cue_duration == 0:
                                 state = 'DELAY_FIXATION'
                                 print('state = DELAY_FIXATION')
@@ -598,7 +571,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                            #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                            
+                            self.pd_tgt.draw()
+                            self.write_Dout(0,0)
                             self.window.flip()
                             state = 'STR_TARGET_PURSUIT'  
                             
@@ -606,6 +581,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if not self.eye_blink:
                             self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
                             self.tgt.draw()
+                            self.pd_tgt.draw()
+                            self.write_Dout(0,0)
                             self.window.flip()
                             state_start_time = self.t
                             state_inter_time = self.t
@@ -616,18 +593,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                     if state == 'CUE_FIXATION':
                         # The animal should not be able to view the cue twice by breaking fixation, so we display the cue for a fixed amount of time,
                         # regardless of whether the animal maintains fixation
-                        '''
-                        eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
-                        if eye_dist_from_tgt > fsm_parameter['rew_area']/2 or self.eye_blink:
-                            state_start_time = self.t
-                            state_inter_time = self.t
-                            self.trial_data['state_start_t_str_tgt_fixation'].append(self.t)
-                            
-                            self.tgt.draw()
-                            self.window.flip() # Clears the cue
-                            state = 'STR_TARGET_FIXATION'
-                            print('state = STR_TARGET_FIXATION')
-                        '''
+
                         if (self.t-state_inter_time) >= fsm_parameter['cue_duration']:
                             state_start_time = self.t
                             state_inter_time = self.t
@@ -640,7 +606,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             else:
                                 state = 'DELAY_FIXATION'
                                 print('state = DELAY_FIXATION')
+                                  
                             self.tgt.draw()
+                            self.pd_tgt.draw()
                             self.window.flip()
                             
                     if state == 'MASK_CUE':
@@ -649,6 +617,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             self.trial_data['state_start_t_delay_fixation'].append(self.t)
                                  
+                            self.pd_tgt.draw()
                             self.tgt.draw()
                             self.window.flip() # Clears the mask
                             state = 'DELAY_FIXATION'
@@ -677,6 +646,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.tgt_y = self.cue_y
                             self.tgt.pos = (self.tgt_x,self.tgt_y)                   
                             self.tgt.draw()
+                            self.pd_tgt.draw()
+                            self.write_Dout(0,0)
                             self.window.flip()
                             state = 'ECCENTRIC_TGT_PRESENT'
                             print('state = ECCENTRIC_TGT_PRESENT')
@@ -685,7 +656,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                            #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                            self.write_Dout(0,0)
+                            self.pd_tgt.draw()
+            
                             self.window.flip()
                             state = 'STR_TARGET_PURSUIT'
                             
@@ -711,7 +684,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
-                            #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                            self.write_Dout(1,1)
                             self.window.flip()
                             print('state = INCORRECT_SACCADE')
                             state = 'INCORRECT_SACCADE'                         
@@ -723,7 +696,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                            #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                            self.write_Dout(0,0)
+                            self.pd_tgt.draw()
                             self.window.flip()
                             print('state = STR_TARGET_PURSUIT')
                             state = 'STR_TARGET_PURSUIT'
@@ -744,6 +718,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 self.tgt.pos = (self.end_x,self.end_y)              
                                 self.tgt.draw()
                                 
+                            self.pd_tgt.draw()
                             self.window.flip()
                             state_start_time = self.t
                             state_inter_time = self.t
@@ -779,6 +754,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                         self.trial_data['distractor_y'].append(distractor_pos[1])
                                         wrong_tgt_bool = True
 
+                                self.write_Dout(1,1)
                                 self.window.flip()
                                 if wrong_tgt_bool:
                                     tgt_display_coords.pop(remove_tgt_ind)
@@ -793,7 +769,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                            #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                            self.pd_tgt.draw()
+                            self.write_Dout(0,0)
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
                             
@@ -814,7 +791,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                            #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                            self.pd_tgt.draw()
+                            self.write_Dout(0,0)
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
                             
@@ -828,6 +806,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 state_start_time = self.t
                                 state_inter_time = self.t
                                 self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                                self.pd_tgt.draw()
+                                self.write_Dout(0,0)
                                 self.window.flip() 
                                 state = 'STR_TARGET_PURSUIT'
                         
@@ -845,7 +825,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         state_inter_time = self.t
                         self.trial_data['state_start_t_end_tgt_fixation'].append(self.t)
                         self.tgt.draw()
-                        #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                        
+                        self.write_Dout(1,1)
                         self.window.flip()
                         state = 'END_TARGET_FIXATION'  
                         print('state = END_TARGET_FIXATION')
@@ -865,7 +846,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                            #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                            self.pd_tgt.draw()
+                            self.write_Dout(0,0)
+                            
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'                       
                     
@@ -875,7 +858,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                            #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                            self.pd_tgt.draw()
+                            self.write_Dout(0,0)
                             self.window.flip()
                             state = 'STR_TARGET_PURSUIT'
                             
@@ -884,7 +868,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         state_start_time = self.t
                         state_inter_time = self.t
                         self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
-                        #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+                        
                         self.window.flip()
                         state = 'INCORRECT_SACCADE'
                             
@@ -921,10 +905,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
         core.quit()
         
         # Reset digital out
-        dout_ch_0 = 1 # nominal PD
-        dout_ch_1 = 0 # random signal
-        dout_ch_2 = 1 # LED
-        #eye_tracker.writeIOPort(4, dout_ch_0 + 2*dout_ch_1 + (2**2)*dout_ch_2) # ports C and D are 4 and 5, respectively
+        self.write_Dout(1,1)
         
         # Reset time
         self.t = math.nan
@@ -989,7 +970,12 @@ class DelaySacFsmProcess(multiprocessing.Process):
             self.landolt_circ_inner.draw()
             if not mask:
                 self.landolt_rect.draw()
-            
+    
+    def write_Dout(self,dout_ch1_value,dout_ch5_value):
+        with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
+            self.dout_ch_1.value = dout_ch1_value
+            self.dout_ch_5.value = dout_ch5_value
+        self.data_ch_change.set()        
     
     def init_trial_data(self):
         '''
