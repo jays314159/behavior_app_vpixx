@@ -818,7 +818,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 pump_to_use = 2
                             else:
                                 pump_to_use = 1
-                        self.fsm_to_gui_sndr.send(('pump_' + str(pump_to_use),0))
+                            self.fsm_to_gui_sndr.send(('log','Pump switchd to '+str(pump_to_use)))
+                        self.fsm_to_gui_sndr.send(('pump',pump_to_use,'pump',0))
                                                 
                         lib.playSound(2000,0.1) # reward beep
                         state_start_time = self.t
@@ -1464,9 +1465,15 @@ class DelaySacGui(FsmGui):
         self.sidepanel_params_3_tab_QWidget = QWidget()
         self.sidepanel_params_3_tab_QVBoxLayout = QVBoxLayout()
         self.sidepanel_params_3_tab_QWidget.setLayout(self.sidepanel_params_3_tab_QVBoxLayout)
-        self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_1_tab_QWidget, 'Corr Sac')
-        self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_2_tab_QWidget, 'Delay Task')
-        self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_3_tab_QWidget, 'Extra')
+        self.sidepanel_params_4_tab_QWidget = QWidget()
+        self.sidepanel_params_4_tab_QVBoxLayout = QVBoxLayout()
+        self.sidepanel_params_4_tab_QWidget.setLayout(self.sidepanel_params_4_tab_QVBoxLayout)
+        self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_1_tab_QWidget, 'General')
+        self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_2_tab_QWidget, 'Corr Sac.')
+        self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_3_tab_QWidget, 'Delay Task')
+        self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_4_tab_QWidget, 'Extra')
+        
+        self.sidepanel_custom_QVBoxLayout.addWidget(self.sidepanel_params_TabWidget)
         
         # Side panel
         self.horz_offset_QHBoxLayout = QHBoxLayout()
@@ -1480,7 +1487,7 @@ class DelaySacGui(FsmGui):
         self.horz_offset_QDoubleSpinBox.setDecimals(1)
         self.horz_offset_QDoubleSpinBox.setSingleStep(0.1)
         self.horz_offset_QHBoxLayout.addWidget(self.horz_offset_QDoubleSpinBox)       
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.horz_offset_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.horz_offset_QHBoxLayout)
         
         self.vert_offset_QHBoxLayout = QHBoxLayout()
         self.vert_offset_QLabel = QLabel('Vertical offset (deg):')
@@ -1493,7 +1500,7 @@ class DelaySacGui(FsmGui):
         self.vert_offset_QDoubleSpinBox.setDecimals(1)
         self.vert_offset_QDoubleSpinBox.setSingleStep(0.1)
         self.vert_offset_QHBoxLayout.addWidget(self.vert_offset_QDoubleSpinBox)       
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.vert_offset_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.vert_offset_QHBoxLayout)
         
         self.min_fix_time_QHBoxLayout = QHBoxLayout()
         self.min_fix_time_QLabel = QLabel("Minimum fixation time (s):")
@@ -1505,7 +1512,7 @@ class DelaySacGui(FsmGui):
         self.min_fix_time_QDoubleSpinBox.setSingleStep(0.1)
         self.min_fix_time_QDoubleSpinBox.setDecimals(1)
         self.min_fix_time_QHBoxLayout.addWidget(self.min_fix_time_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.min_fix_time_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.min_fix_time_QHBoxLayout)
         
         self.max_wait_fixation_QHBoxLayout = QHBoxLayout()
         self.max_wait_fixation_QLabel = QLabel("Maximum wait for fixation (s):")
@@ -1517,7 +1524,7 @@ class DelaySacGui(FsmGui):
         self.max_wait_fixation_QDoubleSpinBox.setSingleStep(0.1)
         self.max_wait_fixation_QDoubleSpinBox.setDecimals(1)
         self.max_wait_fixation_QHBoxLayout.addWidget(self.max_wait_fixation_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.max_wait_fixation_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.max_wait_fixation_QHBoxLayout)
         
         self.rew_area_QHBoxLayout = QHBoxLayout()
         self.rew_area_QLabel = QLabel("Reward area (deg):")
@@ -1529,7 +1536,7 @@ class DelaySacGui(FsmGui):
         self.rew_area_QDoubleSpinBox.setSingleStep(0.1)
         self.rew_area_QDoubleSpinBox.setDecimals(1)
         self.rew_area_QHBoxLayout.addWidget(self.rew_area_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.rew_area_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.rew_area_QHBoxLayout)
         
         self.time_to_reward_QHBoxLayout = QHBoxLayout()
         self.time_to_reward_QLabel = QLabel("Time to reward (s):")
@@ -1541,7 +1548,7 @@ class DelaySacGui(FsmGui):
         self.time_to_reward_QDoubleSpinBox.setSingleStep(0.1)
         self.time_to_reward_QDoubleSpinBox.setDecimals(1)
         self.time_to_reward_QHBoxLayout.addWidget(self.time_to_reward_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.time_to_reward_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.time_to_reward_QHBoxLayout)
         
         self.iti_QHBoxLayout = QHBoxLayout()
         self.iti_QLabel = QLabel("ITI (s):")
@@ -1553,7 +1560,7 @@ class DelaySacGui(FsmGui):
         self.iti_QDoubleSpinBox.setSingleStep(0.1)
         self.iti_QDoubleSpinBox.setDecimals(1)
         self.iti_QHBoxLayout.addWidget(self.iti_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.iti_QHBoxLayout)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.iti_QHBoxLayout)
         
         self.pump_switch_QHBoxLayout = QHBoxLayout()
         self.pump_switch_QLabel = QLabel("Pump switch interval (trials):")
@@ -1566,9 +1573,7 @@ class DelaySacGui(FsmGui):
         self.pump_switch_QDoubleSpinBox.setSingleStep(1)
         self.pump_switch_QDoubleSpinBox.setDecimals(0)
         self.pump_switch_QHBoxLayout.addWidget(self.pump_switch_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.pump_switch_QHBoxLayout)
-        
-        self.sidepanel_custom_QVBoxLayout.addWidget(self.sidepanel_params_TabWidget)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pump_switch_QHBoxLayout)
         
         self.prim_sac_amp_QHBoxLayout = QHBoxLayout()
         self.prim_sac_amp_QLabel = QLabel("Primary saccade amp. (deg):")
@@ -1580,7 +1585,7 @@ class DelaySacGui(FsmGui):
         self.prim_sac_amp_QDoubleSpinBox.setSingleStep(0.1)
         self.prim_sac_amp_QDoubleSpinBox.setDecimals(1)
         self.prim_sac_amp_QHBoxLayout.addWidget(self.prim_sac_amp_QDoubleSpinBox)
-        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.prim_sac_amp_QHBoxLayout)
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.prim_sac_amp_QHBoxLayout)
         
         self.corr_sac_amp_QHBoxLayout = QHBoxLayout()
         self.corr_sac_amp_QLabel = QLabel("Corrective saccade amp. (deg):")
@@ -1592,7 +1597,7 @@ class DelaySacGui(FsmGui):
         self.corr_sac_amp_QDoubleSpinBox.setSingleStep(0.1)
         self.corr_sac_amp_QDoubleSpinBox.setDecimals(1)
         self.corr_sac_amp_QHBoxLayout.addWidget(self.corr_sac_amp_QDoubleSpinBox)
-        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.corr_sac_amp_QHBoxLayout)
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.corr_sac_amp_QHBoxLayout)
         
         self.num_prim_sac_dir_QHBoxLayout = QHBoxLayout()
         self.num_prim_sac_dir_QLabel = QLabel("Number of prim. sac. direction:")
@@ -1605,7 +1610,7 @@ class DelaySacGui(FsmGui):
         self.num_prim_sac_dir_QDoubleSpinBox.setSingleStep(1)
         self.num_prim_sac_dir_QDoubleSpinBox.setDecimals(0)
         self.num_prim_sac_dir_QHBoxLayout.addWidget(self.num_prim_sac_dir_QDoubleSpinBox)
-        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.num_prim_sac_dir_QHBoxLayout)
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.num_prim_sac_dir_QHBoxLayout)
         
         self.first_prim_sac_dir_QHBoxLayout = QHBoxLayout()
         self.first_prim_sac_dir_QLabel = QLabel("1st prim. sac. direction (deg):")
@@ -1618,7 +1623,7 @@ class DelaySacGui(FsmGui):
         self.first_prim_sac_dir_QDoubleSpinBox.setSingleStep(1)
         self.first_prim_sac_dir_QDoubleSpinBox.setDecimals(0)
         self.first_prim_sac_dir_QHBoxLayout.addWidget(self.first_prim_sac_dir_QDoubleSpinBox)
-        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.first_prim_sac_dir_QHBoxLayout)
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.first_prim_sac_dir_QHBoxLayout)
         
         self.num_corr_sac_dir_QHBoxLayout = QHBoxLayout()
         self.num_corr_sac_dir_QLabel = QLabel("Number of corr. sac. direction:")
@@ -1631,7 +1636,7 @@ class DelaySacGui(FsmGui):
         self.num_corr_sac_dir_QDoubleSpinBox.setSingleStep(1)
         self.num_corr_sac_dir_QDoubleSpinBox.setDecimals(0)
         self.num_corr_sac_dir_QHBoxLayout.addWidget(self.num_corr_sac_dir_QDoubleSpinBox)
-        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.num_corr_sac_dir_QHBoxLayout)
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.num_corr_sac_dir_QHBoxLayout)
         
         '''
         self.pun_time_QHBoxLayout = QHBoxLayout()
@@ -1657,7 +1662,7 @@ class DelaySacGui(FsmGui):
         self.sac_detect_threshold_QDoubleSpinBox.setSingleStep(5)
         self.sac_detect_threshold_QDoubleSpinBox.setDecimals(0)
         self.sac_detect_threshold_QHBoxLayout.addWidget(self.sac_detect_threshold_QDoubleSpinBox)
-        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.sac_detect_threshold_QHBoxLayout)
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.sac_detect_threshold_QHBoxLayout)
         
         self.sac_on_off_threshold_QHBoxLayout = QHBoxLayout()
         self.sac_on_off_threshold_QLabel = QLabel("Saccade onset/offset threshold (deg/s):")
@@ -1669,7 +1674,7 @@ class DelaySacGui(FsmGui):
         self.sac_on_off_threshold_QDoubleSpinBox.setSingleStep(5)
         self.sac_on_off_threshold_QDoubleSpinBox.setDecimals(0)
         self.sac_on_off_threshold_QHBoxLayout.addWidget(self.sac_on_off_threshold_QDoubleSpinBox)
-        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.sac_on_off_threshold_QHBoxLayout)
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.sac_on_off_threshold_QHBoxLayout)
         
         self.pursuit_amp_QHBoxLayout = QHBoxLayout()
         self.pursuit_amp_QLabel = QLabel("Pursuit amp. (deg):")
@@ -1681,7 +1686,7 @@ class DelaySacGui(FsmGui):
         self.pursuit_amp_QDoubleSpinBox.setSingleStep(0.1)
         self.pursuit_amp_QDoubleSpinBox.setDecimals(1)
         self.pursuit_amp_QHBoxLayout.addWidget(self.pursuit_amp_QDoubleSpinBox)
-        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pursuit_amp_QHBoxLayout)
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.pursuit_amp_QHBoxLayout)
         
         self.pursuit_dur_QHBoxLayout = QHBoxLayout()
         self.pursuit_dur_QLabel = QLabel("Pursuit duration (s):")
@@ -1693,7 +1698,7 @@ class DelaySacGui(FsmGui):
         self.pursuit_dur_QDoubleSpinBox.setSingleStep(0.1)
         self.pursuit_dur_QDoubleSpinBox.setDecimals(1)
         self.pursuit_dur_QHBoxLayout.addWidget(self.pursuit_dur_QDoubleSpinBox)
-        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pursuit_dur_QHBoxLayout)
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.pursuit_dur_QHBoxLayout)
         
         self.cue_duration_QHBoxLayout = QHBoxLayout()
         self.cue_duration_QLabel = QLabel("Cue Duration (s):")
@@ -1705,7 +1710,7 @@ class DelaySacGui(FsmGui):
         self.cue_duration_QDoubleSpinBox.setSingleStep(0.01)
         self.cue_duration_QDoubleSpinBox.setDecimals(2)
         self.cue_duration_QHBoxLayout.addWidget(self.cue_duration_QDoubleSpinBox)
-        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.cue_duration_QHBoxLayout)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.cue_duration_QHBoxLayout)
         
         self.mask_duration_QHBoxLayout = QHBoxLayout()
         self.mask_duration_QLabel = QLabel("Mask Duration (s):")
@@ -1717,7 +1722,7 @@ class DelaySacGui(FsmGui):
         self.mask_duration_QDoubleSpinBox.setSingleStep(0.01)
         self.mask_duration_QDoubleSpinBox.setDecimals(2)
         self.mask_duration_QHBoxLayout.addWidget(self.mask_duration_QDoubleSpinBox)
-        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.mask_duration_QHBoxLayout)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.mask_duration_QHBoxLayout)
         
         self.cue_probability_QHBoxLayout = QHBoxLayout()
         self.cue_probability_QLabel = QLabel("Cue Probability (s):")
@@ -1729,7 +1734,7 @@ class DelaySacGui(FsmGui):
         self.cue_probability_QDoubleSpinBox.setSingleStep(0.1)
         self.cue_probability_QDoubleSpinBox.setDecimals(1)
         self.cue_probability_QHBoxLayout.addWidget(self.cue_probability_QDoubleSpinBox)
-        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.cue_probability_QHBoxLayout)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.cue_probability_QHBoxLayout)
         
         self.min_delay_QHBoxLayout = QHBoxLayout()
         self.min_delay_QLabel = QLabel("Minimum Delay (s):")
@@ -1741,7 +1746,7 @@ class DelaySacGui(FsmGui):
         self.min_delay_QDoubleSpinBox.setSingleStep(0.01)
         self.min_delay_QDoubleSpinBox.setDecimals(2)
         self.min_delay_QHBoxLayout.addWidget(self.min_delay_QDoubleSpinBox)
-        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.min_delay_QHBoxLayout)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.min_delay_QHBoxLayout)
         
         self.max_delay_QHBoxLayout = QHBoxLayout()
         self.max_delay_QLabel = QLabel("Maximum Delay (s):")
@@ -1753,7 +1758,7 @@ class DelaySacGui(FsmGui):
         self.max_delay_QDoubleSpinBox.setSingleStep(0.01)
         self.max_delay_QDoubleSpinBox.setDecimals(2)
         self.max_delay_QHBoxLayout.addWidget(self.max_delay_QDoubleSpinBox)
-        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.max_delay_QHBoxLayout)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.max_delay_QHBoxLayout)
         
         self.cue_type_QHBoxLayout = QHBoxLayout()
         self.cue_type_QLabel = QLabel("Cue Type:")
@@ -1762,7 +1767,7 @@ class DelaySacGui(FsmGui):
         self.cue_type_QComboBox = QComboBox()
         self.cue_type_QComboBox.addItems(['Arrow', 'Landolt C', 'Both'])
         self.cue_type_QHBoxLayout.addWidget(self.cue_type_QComboBox)
-        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.cue_type_QHBoxLayout)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.cue_type_QHBoxLayout)
         
         self.ambiguity_prob_QHBoxLayout = QHBoxLayout()
         self.ambiguity_prob_QLabel = QLabel("Probability of Ambiguous Cue:")
@@ -1774,7 +1779,7 @@ class DelaySacGui(FsmGui):
         self.ambiguity_prob_QDoubleSpinBox.setSingleStep(0.01)
         self.ambiguity_prob_QDoubleSpinBox.setDecimals(2)
         self.ambiguity_prob_QHBoxLayout.addWidget(self.ambiguity_prob_QDoubleSpinBox)
-        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.ambiguity_prob_QHBoxLayout)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.ambiguity_prob_QHBoxLayout)
         
         self.num_tgt_display_QHBoxLayout = QHBoxLayout()
         self.num_tgt_display_QLabel = QLabel("Number of Targets Displayed:")
@@ -1786,16 +1791,16 @@ class DelaySacGui(FsmGui):
         self.num_tgt_display_QDoubleSpinBox.setSingleStep(1)
         self.num_tgt_display_QDoubleSpinBox.setDecimals(0)
         self.num_tgt_display_QHBoxLayout.addWidget(self.num_tgt_display_QDoubleSpinBox)
-        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.num_tgt_display_QHBoxLayout)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.num_tgt_display_QHBoxLayout)
         
         self.random_tgt_QCheckBox = QCheckBox('Randomize Targets')
-        self.sidepanel_params_2_tab_QVBoxLayout.addWidget(self.random_tgt_QCheckBox)
+        self.sidepanel_params_3_tab_QVBoxLayout.addWidget(self.random_tgt_QCheckBox)
         
         self.fixed_cue_pos_QCheckBox = QCheckBox('Fixed Cue Position')
-        self.sidepanel_params_3_tab_QVBoxLayout.addWidget(self.fixed_cue_pos_QCheckBox)
+        self.sidepanel_params_4_tab_QVBoxLayout.addWidget(self.fixed_cue_pos_QCheckBox)
         
         self.center_cue_QCheckBox = QCheckBox('Cue at Center Fixation')
-        self.sidepanel_params_3_tab_QVBoxLayout.addWidget(self.center_cue_QCheckBox)
+        self.sidepanel_params_4_tab_QVBoxLayout.addWidget(self.center_cue_QCheckBox)
         
         self.first_cue_dir_QHBoxLayout = QHBoxLayout()
         self.first_cue_dir_QLabel = QLabel("Cue Direction:")
@@ -1807,7 +1812,7 @@ class DelaySacGui(FsmGui):
         self.first_cue_dir_QDoubleSpinBox.setSingleStep(1)
         self.first_cue_dir_QDoubleSpinBox.setDecimals(0)
         self.first_cue_dir_QHBoxLayout.addWidget(self.first_cue_dir_QDoubleSpinBox)
-        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.first_cue_dir_QHBoxLayout)
+        self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.first_cue_dir_QHBoxLayout)
         
         self.num_cue_dir_QHBoxLayout = QHBoxLayout()
         self.num_cue_dir_QLabel = QLabel("Number of Cue Directions:")
@@ -1819,7 +1824,7 @@ class DelaySacGui(FsmGui):
         self.num_cue_dir_QDoubleSpinBox.setSingleStep(1)
         self.num_cue_dir_QDoubleSpinBox.setDecimals(0)
         self.num_cue_dir_QHBoxLayout.addWidget(self.num_cue_dir_QDoubleSpinBox)
-        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.num_cue_dir_QHBoxLayout)
+        self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.num_cue_dir_QHBoxLayout)
         
         self.reverse_prob_QHBoxLayout = QHBoxLayout()
         self.reverse_prob_QLabel = QLabel("Probability of Reversed Cue:")
@@ -1831,7 +1836,7 @@ class DelaySacGui(FsmGui):
         self.reverse_prob_QDoubleSpinBox.setSingleStep(0.1)
         self.reverse_prob_QDoubleSpinBox.setDecimals(2)
         self.reverse_prob_QHBoxLayout.addWidget(self.reverse_prob_QDoubleSpinBox)
-        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.reverse_prob_QHBoxLayout)
+        self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.reverse_prob_QHBoxLayout)
         
         self.save_QPushButton = QPushButton('Save parameters')
         self.sidepanel_custom_QVBoxLayout.addWidget(self.save_QPushButton)
