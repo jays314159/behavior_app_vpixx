@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxL
                             QDialog, QShortcut, QTabWidget, QWidget, QVBoxLayout
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
 from psychopy import monitors, visual, core
+from psychopy import event as psychopy_event
 
 # VPixx related
 from pypixxlib import tracker
@@ -28,7 +29,7 @@ from datetime import datetime
 import time
 
 class DelaySacEyeProcess(multiprocessing.Process):
-    def __init__(self,exp_name,data_sndr,stop_exp_Event,stop_fsm_process_Event,data_change_Event,end_trial_Event,real_time_data_Array, data_ch_1,data_ch_5,data_change_event, main_parameter,mon_parameter):
+    def __init__(self,exp_name,data_sndr,stop_exp_Event,stop_fsm_process_Event,data_change_Event,end_trial_Event,real_time_data_Array, data_ch_1,data_ch_5,data_ch_change, main_parameter,mon_parameter):
         super().__init__()
         self.exp_name = exp_name
         self.data_sndr = data_sndr
@@ -41,9 +42,9 @@ class DelaySacEyeProcess(multiprocessing.Process):
         self.end_trial_Event = end_trial_Event
         #self.no_tracker_Event = no_tracker_Event
         #self.mouse_disable_Event = mouse_disable_Event
-        self.data_ch_1 = data_ch_1
-        self.data_ch_5 = data_ch_5
-        self.data_change_event = data_change_event
+        self.dout_ch_1 = data_ch_1
+        self.dout_ch_5 = data_ch_5
+        self.data_ch_change = data_ch_change
         
         self.mouse_mode = False
         #self.no_tracker = False
@@ -95,10 +96,11 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 left_eye_blink = True
                 run_exp = True
                 old_t = 0;
+                random_signal_t = self.t
                 
                 dout_ch_3 = 0 # random signal
                 with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
-                    DPxSetDoutValue(self.dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5, bitMask)
+                    DPxSetDoutValue(self.dout_ch_1.value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5.value, bitMask)
                     DPxUpdateRegCache()
                     
             if (self.t - random_signal_t) > random_signal_flip_duration:
@@ -169,7 +171,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 
             if self.data_ch_change.is_set():
                 with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
-                    DPxSetDoutValue(self.dout_ch_1 + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5, bitMask)
+                    DPxSetDoutValue(self.dout_ch_1.value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5.value, bitMask)
                     DPxUpdateRegCache()
                 self.data_ch_change.clear()
                          
@@ -191,7 +193,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
         
 
 class DelaySacFsmProcess(multiprocessing.Process):
-    def __init__(self,exp_name, fsm_to_gui_sndr, gui_to_fsm_Q, data_rcvr, stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event, mouse_enable_Event, real_time_data_Array, eye_data_Array, data_ch_1,data_ch_5,data_change_event, main_parameter, mon_parameter):
+    def __init__(self,exp_name, fsm_to_gui_sndr, gui_to_fsm_Q, data_rcvr, stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event, mouse_enable_Event, real_time_data_Array, eye_data_Array, data_ch_1,data_ch_5,data_ch_change, main_parameter, mon_parameter):
         super().__init__()
         self.exp_name = exp_name
         self.fsm_to_gui_sndr = fsm_to_gui_sndr
@@ -207,9 +209,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.end_trial_Event = end_trial_Event
         self.mouse_enable_Event = mouse_enable_Event
         self.mouse_mode = False
-        self.data_ch_1 = data_ch_1
-        self.data_ch_5 = data_ch_5
-        self.data_change_event = data_change_event
+        self.dout_ch_1 = data_ch_1
+        self.dout_ch_5 = data_ch_5
+        self.data_ch_change = data_ch_change
         
         # Init var.
         self.eye_x = 9999
@@ -252,10 +254,6 @@ class DelaySacFsmProcess(multiprocessing.Process):
         # Process loop
         while not self.stop_fsm_process_Event.is_set():
             if not self.stop_exp_Event.is_set():
-                # Init. EyeLink host PC file
-                #file_name = datetime.now().strftime("%H%M%S.EDF")
-                #eyelink_worker.init_file(eye_tracker, file_name)
-                #eye_data = eye_tracker.getNewestSample()
                 # Update targets
                 # Load exp parameter
                 
@@ -347,7 +345,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         # self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                         # Close EyeLink host PC file
                         #eyelink_worker.close_file(eye_tracker)
-                        self.fsm_to_gui_sndr.send(('process_eyelink_data',eyelink_worker.data_dir_file_path, eyelink_worker.file_name))
+                        #self.fsm_to_gui_sndr.send(('process_eyelink_data',eyelink_worker.data_dir_file_path, eyelink_worker.file_name))
                         # Remove all targets
                         self.window.flip()
                         
@@ -1070,7 +1068,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
         return parameter
         
 class DelaySacGui(FsmGui):
-    def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event,mouse_toggle_Event, no_tracker_Event, real_time_data_Array, main_parameter):        
+    def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event,mouse_toggle_Event, real_time_data_Array, main_parameter):        
         # import faulthandler
         # faulthandler.disable()
         # faulthandler.enable()
@@ -1080,14 +1078,12 @@ class DelaySacGui(FsmGui):
         self.stop_exp_Event = stop_exp_Event
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.mouse_toggle_Event = mouse_toggle_Event
-        self.no_tracker_Event = no_tracker_Event
         self.real_time_data_Array = real_time_data_Array
         self.exp_name = exp_name
         self.main_parameter = main_parameter
         super(DelaySacGui,self).__init__(self.stop_fsm_process_Event)      
         self.init_gui()
         self.thread_pool = QThreadPool()
-        self.eyelink_worker = EyelinkWorker()
         # Create socket for ZMQ
         try:
             context = zmq.Context()
@@ -1176,8 +1172,6 @@ class DelaySacGui(FsmGui):
         self.mouse_enable_QPushButton.clicked.connect(self.mouse_enable_clicked)
         self.mouse_disable_QPushButton.clicked.connect(self.mouse_disable_clicked)
         
-        # EyeLink data processor
-        self.eyelink_worker.signal.to_main_thread.connect(self.send_processed_data)
     #%% SLOTS
     @pyqtSlot()
     def toolbar_run_QAction_triggered(self):
@@ -1246,14 +1240,6 @@ class DelaySacGui(FsmGui):
             
             if msg_title == 'log':
                 self.log_QPlainTextEdit.appendPlainText(msg[1])
-            if msg_title == 'process_eyelink_data':
-                # Stop timer to stop getting data from fsm thread
-                self.data_QTimer.stop()
-                self.eyelink_worker.data_dir_file_path = msg[1]
-                self.eyelink_worker.file_name = msg[2]
-                self.thread_pool.start(self.eyelink_worker)
-            else:
-                self.fsm_to_plot_priority_socket.send_pyobj(msg)
                 
         with self.real_time_data_Array.get_lock():
             t = self.real_time_data_Array[0]
@@ -1464,15 +1450,12 @@ class DelaySacGui(FsmGui):
     @pyqtSlot()
     def mouse_disable_clicked(self):
         self.mouse_disable_QPushButton.setDisabled(True)
-        if not self.no_tracker_Event.is_set():
-            self.mouse_toggle_Event.clear()
-            self.mouse_mode = False
-            self.mouse_enable_QPushButton.setEnabled(True)
-            self.exp_parameter, _ = lib.load_parameter('experiment','exp_parameter.json',True,True,self.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
-            self.update_parameter()
-        else:
-            print("No eye tracker found.")
 
+        self.mouse_toggle_Event.clear()
+        self.mouse_mode = False
+        self.mouse_enable_QPushButton.setEnabled(True)
+        self.exp_parameter, _ = lib.load_parameter('experiment','exp_parameter.json',True,True,self.set_default_parameter,self.exp_name,self.main_parameter['current_monkey'])
+        self.update_parameter()
         
     #%% GUI
     def init_gui(self):
@@ -1480,8 +1463,8 @@ class DelaySacGui(FsmGui):
         self.plot_1_PlotWidget.deleteLater()
         self.plot_2_PlotWidget.deleteLater()
         # Disable pumps
-        self.pump_1.deleteLater()
-        self.pump_2.deleteLater()
+        #self.pump_1.deleteLater()
+        #self.pump_2.deleteLater()
         
         # Side panel tabs for extra params
         self.sidepanel_params_TabWidget= QTabWidget()
@@ -1971,7 +1954,7 @@ class DelaySacGui(FsmGui):
 
         
 class DelaySacGuiProcess(multiprocessing.Process):
-    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event,mouse_toggle_Event,no_tracker_Event, real_time_data_Array, main_parameter, parent=None):
+    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event,mouse_toggle_Event, real_time_data_Array, main_parameter, parent=None):
         super(DelaySacGuiProcess,self).__init__(parent)
         self.exp_name = exp_name
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
@@ -1980,11 +1963,10 @@ class DelaySacGuiProcess(multiprocessing.Process):
         self.real_time_data_Array = real_time_data_Array
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.mouse_toggle_Event = mouse_toggle_Event
-        self.no_tracker_Event = no_tracker_Event
         self.main_parameter = main_parameter
     def run(self):  
         app = QApplication(sys.argv)
-        app_gui = DelaySacGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event,self.mouse_toggle_Event,self.no_tracker_Event, self.real_time_data_Array, self.main_parameter)
+        app_gui = DelaySacGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event,self.mouse_toggle_Event, self.real_time_data_Array, self.main_parameter)
         app_gui.setWindowIcon(QtGui.QIcon(os.path.join('.', 'icon', 'experiment_window.png')))
         app_gui.show()
         sys.exit(app.exec())

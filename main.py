@@ -229,6 +229,7 @@ class MainGui(QMainWindow):
         self.cal_QAction.triggered.connect(self.cal_QAction_triggered)
         self.refine_cal_QAction.triggered.connect(self.refine_cal_QAction_triggered)
         self.reward_prediction_QAction.triggered.connect(self.reward_prediction_QAction_triggered)
+        self.delay_saccade_QAction.triggered.connect(self.delay_saccade_QAction_triggered)
         
         self.monitor_total_num_QSpinBox.valueChanged.connect(self.monitor_total_num_QSpinBox_valueChanged)
         self.monitor_num_test_QPushButton.clicked.connect(self.monitor_num_test_QPushButton_clicked)
@@ -357,6 +358,7 @@ class MainGui(QMainWindow):
         gui_process.start()
         
     def delay_saccade_QAction_triggered(self):
+        print("Delay saccade QAction triggered")
         sys_password = self.sys_password_QLineEdit.text()
         cmd_output = os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog'" % (sys_password))
         os.system("echo %s | sudo -S sh -c 'echo > /var/log/syslog.1'" % (sys_password))
@@ -387,9 +389,9 @@ class MainGui(QMainWindow):
        	real_time_data_Array = multiprocessing.Array('d', range(5))
        	eye_data_Array = multiprocessing.Array('d',range(5))
        	exp_name='delay_saccade'
-        fsm_process = DelaySacFsmProcess(exp_name,fsm_to_gui_sndr, gui_to_fsm_rcvr, data_rcvr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,mouse_toggle_Event,real_time_data_Array,eye_data_Array, data_ch_1,data_ch_5,data_change_event, self.main_parameter,self.mon_parameter)
+        fsm_process = DelaySacFsmProcess(exp_name,fsm_to_gui_sndr, gui_to_fsm_rcvr, data_rcvr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,mouse_toggle_Event,real_time_data_Array,eye_data_Array, data_ch_1,data_ch_5,data_ch_change, self.main_parameter,self.mon_parameter)
         
-        eye_process = DelaySacEyeProcess(exp_name,data_sndr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,eye_data_Array, data_ch_1,data_ch_5,data_change_event,self.main_parameter,self.mon_parameter)
+        eye_process = DelaySacEyeProcess(exp_name,data_sndr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,eye_data_Array, data_ch_1,data_ch_5,data_ch_change,self.main_parameter,self.mon_parameter)
         
         gui_process = DelaySacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, mouse_toggle_Event, real_time_data_Array, self.main_parameter)
         
