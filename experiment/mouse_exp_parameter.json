@@ -304,7 +304,7 @@
             "pursuit_amp": 0.1,
             "pursuit_dur": 0.1,
             "prim_sac_amp": 6.0,
-            "num_prim_sac_dir": 8,
+            "num_prim_sac_dir": 2,
             "first_prim_sac_dir": 0,
             "corr_sac_amp": 3.0,
             "num_corr_sac_dir": 8,

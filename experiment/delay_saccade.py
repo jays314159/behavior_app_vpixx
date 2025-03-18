@@ -634,7 +634,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if (self.t-state_inter_time) >= delay_time:
                             state_start_time = self.t
                             state_inter_time = self.t   
-                            self.trial_data['state_start_t_eccentric_tgt_present'].append(self.t)
+                            self.trial_data['state_start_t_ecc_tgt_present'].append(self.t)
                             
                             lib.playSound(1000,0.1) # Neutral beep
                             for counter_tgt in range(len(tgt_display_coords)):
@@ -820,6 +820,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 pump_to_use = 1
                             self.fsm_to_gui_sndr.send(('log','Pump switchd to '+str(pump_to_use)))
                         self.fsm_to_gui_sndr.send(('pump',pump_to_use,'pump',0))
+                        print("Sent to GUI")
                                                 
                         lib.playSound(2000,0.1) # reward beep
                         state_start_time = self.t
@@ -992,7 +993,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.trial_data['state_start_t_cue_fixation'] = []
         self.trial_data['state_start_t_mask_cue'] = []
         self.trial_data['state_start_t_delay_fixation'] = []
-        self.trial_data['state_start_t_eccentric_tgt_present'] = []
+        self.trial_data['state_start_t_ecc_tgt_present'] = []
         self.trial_data['state_start_t_detect_sac_start'] = []
         self.trial_data['state_start_t_saccade'] = []
         self.trial_data['state_start_t_detect_sac_end'] = []
@@ -1225,7 +1226,7 @@ class DelaySacGui(FsmGui):
         if self.fsm_to_gui_rcvr.poll():
             msg = self.fsm_to_gui_rcvr.recv()
             msg_title = msg[0]
-            
+            self.fsm_to_plot_priority_socket.send_pyobj(msg)
             if msg_title == 'log':
                 self.log_QPlainTextEdit.appendPlainText(msg[1])
                 
