@@ -111,56 +111,56 @@ class DelaySacEyeProcess(multiprocessing.Process):
             self.t = TPxBestPolyGetEyePosition(cal_data, raw_data)
                
             # Fix indentation
-                    # Get eye status (blinking)
-                    eye_status = DPxGetReg16(0x59A)
-                    right_eye_blink = bool(eye_status & (1 << 0)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
-                    left_eye_blink = bool(eye_status & (1 << 1)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
-                    if cal_parameter['which_eye_tracked'] == 'Right':
-                        if not right_eye_blink:
-                            eye_blink = False
-                            raw_data_right = [raw_data[0], raw_data[1],1] # [(animal's) right x, right y (pink), left x, left y (cyan)]
-                            eye_pos = lib.raw_to_deg(raw_data_right,cal_parameter['right_cal_matrix'])
-                            self.eye_x = eye_pos[0]
-                            self.eye_y = eye_pos[1]
-                            # Compute eye velocity
-                            vel_t_data.append(self.t)
-                            eye_x_data.append(self.eye_x)
-                            eye_y_data.append(self.eye_y)
-                            if len(vel_t_data)==vel_samp_num:
-                                eye_vel[0] = np.mean(np.diff(eye_x_data)/np.diff(vel_t_data))
-                                eye_vel[1] = np.mean(np.diff(eye_y_data)/np.diff(vel_t_data))
-                                eye_speed = np.sqrt(eye_vel[0]**2 + eye_vel[1]**2)
-                        else:
-                            eye_blink = True
-                            self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
-                            self.eye_y = 9999 
-                    else:
-                        if not left_eye_blink:
-                            eye_blink = False
-                            raw_data_left = [raw_data[2], raw_data[3],1] # [(animal's) right x, right y (pink), left x, left y (cyan)]
-                            eye_pos = lib.raw_to_deg(raw_data_left,cal_parameter['left_cal_matrix'])
-                            self.eye_x = eye_pos[0]
-                            self.eye_y = eye_pos[1]
-                            # Compute eye velocity
-                            vel_t_data.append(self.t)
-                            eye_x_data.append(self.eye_x)
-                            eye_y_data.append(self.eye_y)
-                            if len(vel_t_data)==vel_samp_num:
-                                eye_vel[0] = np.mean(np.diff(eye_x_data)/np.diff(vel_t_data))
-                                eye_vel[1] = np.mean(np.diff(eye_y_data)/np.diff(vel_t_data))
-                                eye_speed = np.sqrt(eye_vel[0]**2 + eye_vel[1]**2)
-                        else:
-                            eye_blink = True
-                            self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
-                            self.eye_y = 9999 
+            # Get eye status (blinking)
+            eye_status = DPxGetReg16(0x59A)
+            right_eye_blink = bool(eye_status & (1 << 0)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
+            left_eye_blink = bool(eye_status & (1 << 1)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
+            if cal_parameter['which_eye_tracked'] == 'Right':
+                if not right_eye_blink:
+                    eye_blink = False
+                    raw_data_right = [raw_data[0], raw_data[1],1] # [(animal's) right x, right y (pink), left x, left y (cyan)]
+                    eye_pos = lib.raw_to_deg(raw_data_right,cal_parameter['right_cal_matrix'])
+                    self.eye_x = eye_pos[0]
+                    self.eye_y = eye_pos[1]
+                    # Compute eye velocity
+                    vel_t_data.append(self.t)
+                    eye_x_data.append(self.eye_x)
+                    eye_y_data.append(self.eye_y)
+                    if len(vel_t_data)==vel_samp_num:
+                        eye_vel[0] = np.mean(np.diff(eye_x_data)/np.diff(vel_t_data))
+                        eye_vel[1] = np.mean(np.diff(eye_y_data)/np.diff(vel_t_data))
+                        eye_speed = np.sqrt(eye_vel[0]**2 + eye_vel[1]**2)
+                else:
+                    eye_blink = True
+                    self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
+                    self.eye_y = 9999 
+            else:
+                if not left_eye_blink:
+                    eye_blink = False
+                    raw_data_left = [raw_data[2], raw_data[3],1] # [(animal's) right x, right y (pink), left x, left y (cyan)]
+                    eye_pos = lib.raw_to_deg(raw_data_left,cal_parameter['left_cal_matrix'])
+                    self.eye_x = eye_pos[0]
+                    self.eye_y = eye_pos[1]
+                    # Compute eye velocity
+                    vel_t_data.append(self.t)
+                    eye_x_data.append(self.eye_x)
+                    eye_y_data.append(self.eye_y)
+                    if len(vel_t_data)==vel_samp_num:
+                        eye_vel[0] = np.mean(np.diff(eye_x_data)/np.diff(vel_t_data))
+                        eye_vel[1] = np.mean(np.diff(eye_y_data)/np.diff(vel_t_data))
+                        eye_speed = np.sqrt(eye_vel[0]**2 + eye_vel[1]**2)
+                else:
+                    eye_blink = True
+                    self.eye_x = 9999 # invalid values; more stable than nan values for plotting purposes in pyqtgraph
+                    self.eye_y = 9999 
                             
-                    with self.real_time_data_Array.get_lock():
-                        self.real_time_data_Array[0] = self.t
-                        self.real_time_data_Array[1] = self.eye_x
-                        self.real_time_data_Array[2] = self.eye_y
-                        self.real_time_data_Array[3] = eye_speed
-                        self.real_time_data_Array[4] = eye_blink
-                        self.data_change_Event.set()
+            with self.real_time_data_Array.get_lock():
+                self.real_time_data_Array[0] = self.t
+                self.real_time_data_Array[1] = self.eye_x
+                self.real_time_data_Array[2] = self.eye_y
+                self.real_time_data_Array[3] = eye_speed
+                self.real_time_data_Array[4] = eye_blink
+                self.data_change_Event.set()
 
             if self.end_trial_Event.is_set():
                 self.data_sndr.send(self.trial_data)
@@ -444,6 +444,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         self.trial_data['delay_time'].append(delay_time)
                         # Pick a random delay time
                         
+                        cue_duration = fsm_parameter['cue_duration']
+                        if np.random.rand() > fsm_parameter['cue_probability']:
+                            cue_duration = 0
+                        self.trial_data['cue_duration'].append(cue_duration)
+                        
                         # Choose set of targets to display
                         tgt_display_list = []
                         if fsm_parameter['randomize_targets']:
@@ -585,9 +590,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.window.flip()
                             lib.playSound(1000,0.1) # neutral beep  
                             '''
-                            if fsm_parameter['cue_duration'] == 0:
-                                state = 'CUE_FIXATION'
-                                print('state = CUE_FIXATION')
+                            if cue_duration == 0:
+                                state = 'DELAY_FIXATION'
+                                print('state = DELAY_FIXATION')
                             else:
                                 state = 'DISPLAY_CUE'
                                 print('state = DISPLAY_CUE')
@@ -1023,6 +1028,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.trial_data['arrow_coherence'] = []
         self.trial_data['cue_orientation'] = []
         self.trial_data['delay_time'] = []
+        self.trial_data['cue_duration'] = []
         
         
         
@@ -1049,6 +1055,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                      'pump_switch_interval':50,
                      'cue_duration':0.2,
                      'mask_duration':0.1,
+                     'cue_probability':1.0,
                      'min_delay':0,
                      'max_delay':0,
                      'cue_type':'arrow',
@@ -1151,6 +1158,7 @@ class DelaySacGui(FsmGui):
         
         self.cue_duration_QDoubleSpinBox.valueChanged.connect(self.cue_duration_QDoubleSpinBox_valueChanged)
         self.mask_duration_QDoubleSpinBox.valueChanged.connect(self.mask_duration_QDoubleSpinBox_valueChanged)
+        self.cue_probability_QDoubleSpinBox.valueChanged.connect(self.cue_probability_QDoubleSpinBox_valueChanged)
         self.min_delay_QDoubleSpinBox.valueChanged.connect(self.min_delay_QDoubleSpinBox_valueChanged)
         self.max_delay_QDoubleSpinBox.valueChanged.connect(self.max_delay_QDoubleSpinBox_valueChanged)
         self.cue_type_QComboBox.currentIndexChanged.connect(self.cue_type_QComboBox_indexChanged)
@@ -1363,7 +1371,11 @@ class DelaySacGui(FsmGui):
     @pyqtSlot()
     def mask_duration_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['mask_duration'] = self.mask_duration_QDoubleSpinBox.value()
-        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')         
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00') 
+    @pyqtSlot()
+    def cue_probability_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['cue_probability'] = self.cue_probability_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')        
     @pyqtSlot()
     def min_delay_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['min_delay'] = self.min_delay_QDoubleSpinBox.value()
@@ -1737,6 +1749,18 @@ class DelaySacGui(FsmGui):
         self.mask_duration_QHBoxLayout.addWidget(self.mask_duration_QDoubleSpinBox)
         self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.mask_duration_QHBoxLayout)
         
+        self.cue_probability_QHBoxLayout = QHBoxLayout()
+        self.cue_probability_QLabel = QLabel("Cue Probability (s):")
+        self.cue_probability_QLabel.setAlignment(Qt.AlignRight)
+        self.cue_probability_QHBoxLayout.addWidget(self.cue_probability_QLabel)
+        self.cue_probability_QDoubleSpinBox = QDoubleSpinBox()
+        self.cue_probability_QDoubleSpinBox.setValue(1)
+        self.cue_probability_QDoubleSpinBox.setMaximum(1)
+        self.cue_probability_QDoubleSpinBox.setSingleStep(0.1)
+        self.cue_probability_QDoubleSpinBox.setDecimals(1)
+        self.cue_probability_QHBoxLayout.addWidget(self.cue_probability_QDoubleSpinBox)
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.cue_probability_QHBoxLayout)
+        
         self.min_delay_QHBoxLayout = QHBoxLayout()
         self.min_delay_QLabel = QLabel("Minimum Delay (s):")
         self.min_delay_QLabel.setAlignment(Qt.AlignRight)
@@ -1873,6 +1897,7 @@ class DelaySacGui(FsmGui):
                          'pump_switch_interval':50,
                          'cue_duration':0.2,
                          'mask_duration':0.1,
+                         'cue_probability':1.0,
                          'min_delay':0,
                          'max_delay':0,
                          'cue_type':'arrow',
@@ -1913,6 +1938,7 @@ class DelaySacGui(FsmGui):
         self.pump_switch_QDoubleSpinBox.setValue(self.exp_parameter['pump_switch_interval'])
         self.cue_duration_QDoubleSpinBox.setValue(self.exp_parameter['cue_duration'])
         self.mask_duration_QDoubleSpinBox.setValue(self.exp_parameter['mask_duration'])
+        self.cue_probability_QDoubleSpinBox.setValue(self.exp_parameter['cue_probability'])
         cue_types = ['arrow','landolt','both']
         self.cue_type_QComboBox.setCurrentIndex(cue_types.index(self.exp_parameter['cue_type']))
         self.min_delay_QDoubleSpinBox.setValue(self.exp_parameter['min_delay'])
@@ -1941,6 +1967,7 @@ class DelaySacGui(FsmGui):
         else:
             self.num_cue_dir_QDoubleSpinBox.setEnabled(True)
         
+
 
         
 class DelaySacGuiProcess(multiprocessing.Process):
