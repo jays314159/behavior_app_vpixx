@@ -290,7 +290,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 num_tgt_pos = len(target_pos_list)
                 num_corr_pos = len(corr_pos_list)
                 print(num_tgt_pos)
-                num_tgt_display = fsm_parameter['num_tgt_display']-1
+                #num_tgt_display = fsm_parameter['num_tgt_display']-1
                 #fsm_parameter['max_wait_for_corrective'] = 0.5 # Add a menu option for this
                 fsm_parameter['max_wait_for_corrective'] = fsm_parameter['max_wait_for_fixation']
                 # Init. var
@@ -425,6 +425,12 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         self.trial_data['cue_duration'].append(cue_duration)
                         
                         # Choose set of targets to display
+                        if np.random.rand() < fsm_parameter['choice_prob']:
+                            num_tgt_display = fsm_parameter['num_tgt_display'] - 1
+                        else:
+                            num_tgt_display = 0
+                            
+                        
                         tgt_display_list = []
                         if fsm_parameter['randomize_targets']:
                             tgt_choices = list(np.arange(0,num_tgt_pos))
@@ -557,14 +563,15 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if (self.t-state_inter_time) >= fsm_parameter['min_fix_time']:
                             state_start_time = self.t
                             state_inter_time = self.t
-                            self.trial_data['state_start_t_cue_display'].append(self.t)
                             #self.tgt_x = self.cue_x
                             #self.tgt_y = self.cue_y
                                  
                             if cue_duration == 0:
+                                self.trial_data['state_start_t_delay_fixation'].append(self.t)
                                 state = 'DELAY_FIXATION'
                                 print('state = DELAY_FIXATION')
                             else:
+                                self.trial_data['state_start_t_cue_display'].append(self.t)
                                 state = 'DISPLAY_CUE'
                                 print('state = DISPLAY_CUE')
                         if (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
@@ -597,14 +604,17 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if (self.t-state_inter_time) >= fsm_parameter['cue_duration']:
                             state_start_time = self.t
                             state_inter_time = self.t
-                            self.trial_data['state_start_t_mask_cue'].append(self.t)
                             
-                            if fsm_parameter['mask_duration'] > 0:     
+                            print(fsm_parameter['mask_duration'])
+                            print(fsm_parameter['mask_duration'] > 0)
+                            if fsm_parameter['mask_duration'] > 1e-3:     
                                 self.draw_cue(cue_type,fsm_parameter['center_cue'],True)
+                                self.trial_data['state_start_t_mask_cue'].append(self.t)
                                 state = 'MASK_CUE'
                                 print('state = MASK_CUE')
                             else:
                                 state = 'DELAY_FIXATION'
+                                self.trial_data['state_start_t_delay_fixation'].append(self.t)
                                 print('state = DELAY_FIXATION')
                                   
                             self.tgt.draw()
@@ -815,7 +825,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                     if state == 'DELIVER_REWARD':
                         if (trial_num % fsm_parameter['pump_switch_interval']) == 0:
                             if pump_to_use == 1:
-                                pump_to_use = 2
+                                pump_to_use = 1
                             else:
                                 pump_to_use = 1
                             self.fsm_to_gui_sndr.send(('log','Pump switchd to '+str(pump_to_use)))
@@ -938,7 +948,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.cue_shapes = []
         for counter_coh in range(len(arrow_param['coherence'])):
             shape = ((arrow_param['coherence'][counter_coh]-1, 0),(0,1),(1,0),(0,-1))
-            curr_cue = visual.shape.ShapeStim(win=self.window,lineColor=arrow_param['fill_color'],fillColor=arrow_param['fill_color'],
+            curr_cue = visual.shape.ShapeStim(win=self.window,lineColor=arrow_param['line_color'],fillColor=arrow_param['fill_color'],
                       lineWidth=arrow_param['line_width'],vertices=shape,
                       size = (arrow_param['cue_length'],arrow_param['cue_width']),units='deg')
             self.cue_shapes.append(curr_cue)
@@ -1050,6 +1060,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                      'num_tgt_display':1,
                      'randomize_targets':False,
                      'ambiguity_prob':0.0,
+                     'choice_prob':0.0,
                      'fixed_cue_pos':True,
                      'first_cue_dir':90,
                      'num_cue_dir':1,
@@ -1150,6 +1161,7 @@ class DelaySacGui(FsmGui):
         self.num_tgt_display_QDoubleSpinBox.valueChanged.connect(self.num_tgt_display_QDoubleSpinBox_valueChanged)
         self.random_tgt_QCheckBox.stateChanged.connect(self.random_tgt_QCheckBox_stateChanged)
         self.ambiguity_prob_QDoubleSpinBox.valueChanged.connect(self.ambiguity_prob_QDoubleSpinBox_valueChanged)
+        self.choice_prob_QDoubleSpinBox.valueChanged.connect(self.choice_prob_QDoubleSpinBox_valueChanged)
         
         self.center_cue_QCheckBox.stateChanged.connect(self.center_cue_QCheckBox_stateChanged)
         self.fixed_cue_pos_QCheckBox.stateChanged.connect(self.fixed_cue_pos_QCheckBox_stateChanged)
@@ -1374,6 +1386,10 @@ class DelaySacGui(FsmGui):
     @pyqtSlot()
     def ambiguity_prob_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['ambiguity_prob'] = self.ambiguity_prob_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def choice_prob_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['choice_prob'] = self.choice_prob_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
         
     @pyqtSlot()
@@ -1782,6 +1798,18 @@ class DelaySacGui(FsmGui):
         self.ambiguity_prob_QHBoxLayout.addWidget(self.ambiguity_prob_QDoubleSpinBox)
         self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.ambiguity_prob_QHBoxLayout)
         
+        self.choice_prob_QHBoxLayout = QHBoxLayout()
+        self.choice_prob_QLabel = QLabel("Choice Probability:")
+        self.choice_prob_QLabel.setAlignment(Qt.AlignRight)
+        self.choice_prob_QHBoxLayout.addWidget(self.choice_prob_QLabel)
+        self.choice_prob_QDoubleSpinBox = QDoubleSpinBox()
+        self.choice_prob_QDoubleSpinBox.setValue(0.0)
+        self.choice_prob_QDoubleSpinBox.setMaximum(1)
+        self.choice_prob_QDoubleSpinBox.setSingleStep(0.01)
+        self.choice_prob_QDoubleSpinBox.setDecimals(2)
+        self.choice_prob_QHBoxLayout.addWidget(self.choice_prob_QDoubleSpinBox)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.choice_prob_QHBoxLayout)
+        
         self.num_tgt_display_QHBoxLayout = QHBoxLayout()
         self.num_tgt_display_QLabel = QLabel("Number of Targets Displayed:")
         self.num_tgt_display_QLabel.setAlignment(Qt.AlignRight)
@@ -1880,6 +1908,7 @@ class DelaySacGui(FsmGui):
                          'num_tgt_display':1,
                          'randomize_targets':False,
                          'ambiguity_prob':0.0,
+                         'choice_prob':0.0,
                          'fixed_cue_pos':True,
                          'first_cue_dir':90,
                          'num_cue_dir':1,
@@ -1922,6 +1951,7 @@ class DelaySacGui(FsmGui):
         self.num_tgt_display_QDoubleSpinBox.setValue(self.exp_parameter['num_tgt_display'])
         self.random_tgt_QCheckBox.setChecked(self.exp_parameter['randomize_targets'])
         self.ambiguity_prob_QDoubleSpinBox.setValue(self.exp_parameter['ambiguity_prob'])
+        self.choice_prob_QDoubleSpinBox.setValue(self.exp_parameter['choice_prob'])
         
         self.fixed_cue_pos_QCheckBox.setChecked(self.exp_parameter['fixed_cue_pos'])
         self.first_cue_dir_QDoubleSpinBox.setValue(self.exp_parameter['first_cue_dir'])
