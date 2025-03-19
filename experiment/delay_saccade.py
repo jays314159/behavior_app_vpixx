@@ -406,7 +406,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         self.cue_end_vector = np.array([self.end_x-self.cue_x, self.end_y-self.cue_y])
                             
                         # Send target data
-                        self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y)))
+                        #self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y)))
                         pursuit_angle = np.random.randint(0,360)
                         pursuit_start_x = np.cos(pursuit_angle*np.pi/180)*fsm_parameter['pursuit_amp']
                         pursuit_start_x += self.start_x
@@ -423,6 +423,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if np.random.rand() > fsm_parameter['cue_probability']:
                             cue_duration = 0
                         self.trial_data['cue_duration'].append(cue_duration)
+                        
                         
                         # Choose set of targets to display
                         if np.random.rand() < fsm_parameter['choice_prob']:
@@ -492,6 +493,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             
                             cue_idx = random.randint(0,len(cue_pos_list)-1)
                             self.cue.pos = cue_pos_list[cue_idx]
+                            
+                        if self.cue_duration > 1e-3:
+                            self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y,self.end_x,self.end_y,self.cue.pos[0],self.cue.pos[1])))
+                        else:
+                            self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y)))
                             
                                
                         
