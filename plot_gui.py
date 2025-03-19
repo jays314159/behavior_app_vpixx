@@ -108,8 +108,10 @@ class PlotGui(FsmGui):
         self.plot_1_eye = self.plot_1_PlotWidget.\
             plot(np.zeros((0)), np.zeros((0)), pen = None,\
             symbolBrush='k', symbolPen='k', symbol='o',symbolSize=10,name='eye',connect='finite')
-
-
+        self.plot_1_distract = self.plot_1_PlotWidget.plot(np.zeros((0)), np.zeros((0)), pen = None,\
+            symbolBrush=None, symbolPen='k', symbol='+',symbolSize=14,name='distractor')
+        self.plot_1_indicator = self.plot_1_PlotWidget.plot(np.zeros((0)), np.zeros((0)), pen = None,\
+            symbolBrush=None, symbolPen='m', symbol='o',symbolSize=10,name='indicator')
 
     @pyqtSlot()
     def toolbar_run_QAction_triggered(self):
