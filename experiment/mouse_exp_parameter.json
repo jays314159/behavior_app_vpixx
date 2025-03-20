@@ -311,7 +311,7 @@
             "num_corr_sac_dir": 8,
             "ITI": 0.1,
             "pump_switch_interval": 50,
-            "cue_duration": 0.2,
+            "cue_duration": 0.4,
             "mask_duration": 0.0,
             "cue_probability": 1.0,
             "min_delay": 0,

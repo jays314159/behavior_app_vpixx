@@ -1,6 +1,6 @@
 {
     "arrow": {
-        "cue_length": 1.25,
+        "cue_length": 2,
         "cue_width":0.4,
         "circle_size":0.7,
         "fill_color": [0.3,0.3,0.3],

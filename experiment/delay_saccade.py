@@ -227,6 +227,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.t = math.nan
         #self.pull_data_t = 0 # keep track of when data was pulled last from VPixx
         self.eye_blink = True;
+        self.num_choice = 0
+        self.num_correct = 0
     
     def run(self):
         # import faulthandler
@@ -340,6 +342,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         run_exp = False
                         self.window.flip()
                         self.t = math.nan
+                        self.num_choice = 0
+                        self.num_correct = 0
                         break
                     # Send random signal for alignment
                     self.write_Dout(0,0)
@@ -406,7 +410,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         self.cue_end_vector = np.array([self.end_x-self.cue_x, self.end_y-self.cue_y])
                             
                         # Send target data
-                        #self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y)))
+                        self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y)))
                         pursuit_angle = np.random.randint(0,360)
                         pursuit_start_x = np.cos(pursuit_angle*np.pi/180)*fsm_parameter['pursuit_amp']
                         pursuit_start_x += self.start_x
@@ -428,6 +432,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         # Choose set of targets to display
                         if np.random.rand() < fsm_parameter['choice_prob']:
                             num_tgt_display = fsm_parameter['num_tgt_display'] - 1
+                            self.num_choice += 1
                         else:
                             num_tgt_display = 0
                             
@@ -493,12 +498,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             
                             cue_idx = random.randint(0,len(cue_pos_list)-1)
                             self.cue.pos = cue_pos_list[cue_idx]
-                            
-                        if self.cue_duration > 1e-3:
-                            self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y,self.end_x,self.end_y,self.cue.pos[0],self.cue.pos[1])))
-                        else:
-                            self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y)))
-                            
+                           
+                        pump_to_use = 1
                                
                         
                         state_start_time = self.t
@@ -773,7 +774,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 self.write_Dout(1,1)
                                 self.window.flip()
                                 if wrong_tgt_bool:
-                                    tgt_display_coords.pop(remove_tgt_ind)
+                                    #tgt_display_coords.pop(remove_tgt_ind)
                                     self.trial_data['state_start_t_wrong_target'].append(self.t)
                                     state = 'WRONG_TARGET'
                                 else: 
@@ -829,16 +830,21 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         
                             
                     if state == 'DELIVER_REWARD':
+                        '''
                         if (trial_num % fsm_parameter['pump_switch_interval']) == 0:
                             if pump_to_use == 1:
                                 pump_to_use = 1
                             else:
                                 pump_to_use = 1
                             self.fsm_to_gui_sndr.send(('log','Pump switchd to '+str(pump_to_use)))
+                        '''
                         self.fsm_to_gui_sndr.send(('pump',pump_to_use,'pump',0))
                         print("Sent to GUI")
-                                                
-                        lib.playSound(2000,0.1) # reward beep
+                        
+                        if pump_to_use == 1:                        
+                            lib.playSound(2000,0.1) # Higher reward if he gets it right without guess-and-check
+                        else:
+                            lib.playSound(2000,0.1)
                         state_start_time = self.t
                         state_inter_time = self.t
                         self.trial_data['state_start_t_end_tgt_fixation'].append(self.t)
@@ -882,6 +888,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state = 'STR_TARGET_PURSUIT'
                             
                     if state == 'WRONG_TARGET':
+                        pump_to_use = 2
                         lib.playSound(500,0.1)
                         state_start_time = self.t
                         state_inter_time = self.t
@@ -899,7 +906,12 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.get_trial_eye_data()
                             
                             # Send trial data to GUI
-                            self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed'))
+                            if num_tgt_display > 0:
+                                if pump_to_use == 1:
+                                    self.num_correct += 1
+                                self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed. ' +str(self.num_correct)+'/'+str(self.num_choice)+' ('+str(int(100*self.num_correct/self.num_choice))+'%)'))
+                            else:
+                                self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed.'))
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             trial_num += 1
                             self.init_trial_data()  
