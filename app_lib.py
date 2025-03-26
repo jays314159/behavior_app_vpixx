@@ -205,7 +205,7 @@ def VPixx_get_pointers_for_data():
     raw_data = (ctypes.c_double * item_count2)(*int_list2)
     return cal_data, raw_data
     
-def make_prim_target(parameter):
+def make_prim_target(parameter,first_dir):
     '''
     Arguments:
     parameter - dictionary of parameters
@@ -217,7 +217,7 @@ def make_prim_target(parameter):
     tgt_list = []
     num_prim_sac_dir = parameter['num_prim_sac_dir']
     prim_sac_amp = parameter['prim_sac_amp']
-    first_dir = parameter['first_prim_sac_dir']
+    #first_dir = parameter['first_prim_sac_dir']
 
     for prim_tgt_idx in range(num_prim_sac_dir):
         prim_tgt_dir = 2*math.pi/num_prim_sac_dir*prim_tgt_idx + first_dir*math.pi/180
@@ -290,6 +290,29 @@ def make_corr_targets_independent(parameter):
         
         
     return prim_tgt_list,corr_tgt_list
+    
+def make_display_target(parameter):
+    '''
+    Arguments:
+    parameter - dictionary of parameters
+    Returns:
+    tgt_list - a list of target positions uniformly distributed around a circle according to a
+                  number of targets and their amplitude
+             - each element is a dictionary with all parameters needed for a target
+    '''
+    tgt_list = []
+    num_prim_sac_dir = parameter['num_tgt_display']
+    prim_sac_amp = parameter['prim_sac_amp']
+    first_dir = parameter['first_prim_sac_dir']
+
+    for prim_tgt_idx in range(num_prim_sac_dir):
+        prim_tgt_dir = 2*math.pi/num_prim_sac_dir*prim_tgt_idx + first_dir*math.pi/180
+        prim_tgt_x = prim_sac_amp*math.cos(prim_tgt_dir)
+        prim_tgt_y = prim_sac_amp*math.sin(prim_tgt_dir)
+        tgt_angle = (360/num_prim_sac_dir*prim_tgt_idx + first_dir) % 360
+
+        tgt_list.append({'prim_tgt_pos': [prim_tgt_x, prim_tgt_y],'angle':tgt_angle})
+    return tgt_list
 
 def raw_to_deg(raw_data, cal_matrix):
     '''

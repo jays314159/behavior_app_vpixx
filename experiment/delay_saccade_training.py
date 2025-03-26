@@ -291,8 +291,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 target_pos_list,corr_pos_list = lib.make_corr_targets_independent(fsm_parameter)
                 num_tgt_pos = len(target_pos_list)
                 num_corr_pos = len(corr_pos_list)
-                print(num_tgt_pos)
-                #num_tgt_display = fsm_parameter['num_tgt_display']-1
+                display_pos_list = lib.make_display_target(fsm_parameter)
+                
                 #fsm_parameter['max_wait_for_corrective'] = 0.5 # Add a menu option for this
                 fsm_parameter['max_wait_for_corrective'] = fsm_parameter['max_wait_for_fixation']
                 # Init. var
@@ -302,23 +302,39 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 self.send_data_t = self.t
                 random_signal_t = self.t
                 trial_num = 1
-                pump_to_use = 1 # which pump to use currently
+                pump_to_use = fsm_parameter['pump_to_use']
+                print(f'PUMP_TO_USE: {pump_to_use}')
                 vel_samp_num = 3
+                moving_avg_samp_num = int(fsm_parameter['moving_avg_samp_num'])
+                current_dir = 0
+                tgt_directions = [fsm_parameter['first_prim_sac_dir'],fsm_parameter['second_dir']]
+                tgt_indx_dict = dict()
+                tgt_distances = {0:[],1:[]}
+                for counter_tgt in range(len(display_pos_list)):
+                    tgt_distances[0].append(abs(display_pos_list[counter_tgt]['angle'] - fsm_parameter['first_prim_sac_dir']))
+                    tgt_distances[1].append(abs(display_pos_list[counter_tgt]['angle'] - fsm_parameter['second_dir']))
+                    
+                tgt_indx_dict[0] = np.argmin(np.array(tgt_distances[0]))
+                tgt_indx_dict[1] = np.argmin(np.array(tgt_distances[1]))
+       
                 vel_t_data = deque(maxlen=vel_samp_num)
                 eye_x_data = deque(maxlen=vel_samp_num)
                 eye_y_data = deque(maxlen=vel_samp_num)
+                self.moving_avg_acc = deque(maxlen=moving_avg_samp_num)
                 eye_pos = [0,0]
                 eye_vel = [0,0]
                 eye_speed = 0.0
                 right_eye_blink = True
                 left_eye_blink = True
                 new_data_received = False
-                if num_tgt_pos % fsm_parameter['num_tgt_display'] == 0:
+                tgt_step_size = 1
+                '''
+                if num_tgt_pos % fsm_parameter['num_tgt_display'] == 0: # Fix this to be independent of num targets
                     tgt_step_size = int(num_tgt_pos/fsm_parameter['num_tgt_display'])
                 else:
                     fsm_parameter['randomize_targets'] = True #Evenly spaced targets are not possible if an odd number are displayed
                     print("Randomized target locations")
-                
+                '''
                 # Reset digital out
                 print(f'Mouse mode: {self.mouse_mode}')
                 run_exp = True
@@ -380,7 +396,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         print('state = INIT')
                         
                         # Set trial parameters
-                        tgt_idx = random.randint(0,num_tgt_pos-1) # Randomly pick target
+                        #tgt_idx = random.randint(0,num_tgt_pos-1) # Randomly pick target
+                        tgt_idx = tgt_indx_dict[current_dir]
                         corr_idx = random.randint(0,num_corr_pos-1)
                             
                         start_pos = (fsm_parameter['horz_offset'], fsm_parameter['vert_offset'])
@@ -394,8 +411,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if cue_type == 'both':
                             cue_type = cues[random.randint(0,1)]
                         
-                        
-                        cue_pos = np.array(target_pos_list[tgt_idx]['prim_tgt_pos']) + np.array(start_pos)
+                        cue_pos = np.array(display_pos_list[tgt_idx]['prim_tgt_pos']) + np.array(start_pos)
+                        #cue_pos = np.array(target_pos_list[tgt_idx]['prim_tgt_pos']) + np.array(start_pos)
+
                         self.cue_x = cue_pos[0]
                         self.cue_y = cue_pos[1]
                         self.trial_data['cue_x'].append(self.cue_x)
@@ -438,6 +456,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             
                         
                         tgt_display_list = []
+                        
                         if fsm_parameter['randomize_targets']:
                             tgt_choices = list(np.arange(0,num_tgt_pos))
                             tgt_choices.remove(tgt_idx)
@@ -447,14 +466,17 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 tgt_display_list.append(curr_choice)
                                
                         else:
-                            for counter_tgt in range(tgt_step_size,num_tgt_pos,tgt_step_size):
-                                curr_idx = (tgt_idx + counter_tgt) % num_tgt_pos
+                            for counter_tgt in range(tgt_step_size,num_tgt_display+1,tgt_step_size):
+                                curr_idx = (tgt_idx + counter_tgt) % (num_tgt_display+1)
                                 tgt_display_list.append(curr_idx)
+                                print(curr_idx)
+                        
                                 
                         tgt_display_byte = 0    
-                        tgt_display_coords = []    
+                        tgt_display_coords = []
                         for counter_tgt in range(num_tgt_display):
-                            curr_pos = np.array(target_pos_list[tgt_display_list[counter_tgt]]['prim_tgt_pos']) + np.array(start_pos)
+                            curr_pos = np.array(display_pos_list[tgt_display_list[counter_tgt]]['prim_tgt_pos']) + np.array(start_pos)
+                            
                             tgt_display_coords.append(curr_pos)
                             tgt_display_byte = tgt_display_byte + 2**tgt_display_list[counter_tgt]
                         self.trial_data['tgt_display_byte'].append(tgt_display_byte)
@@ -484,6 +506,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             
                         self.trial_data['cue_type'].append(cues.index(cue_type))
                         self.trial_data['cue_orientation'].append(ori)
+                        wrong_tgt_bool = False
+                        wrong_tgt_indicator = False
                         
                         if fsm_parameter['center_cue']:
                             self.cue.pos = (self.start_x, self.start_y)
@@ -498,8 +522,6 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             
                             cue_idx = random.randint(0,len(cue_pos_list)-1)
                             self.cue.pos = cue_pos_list[cue_idx]
-                           
-                        #pump_to_use = 1
                                
                         
                         state_start_time = self.t
@@ -605,8 +627,12 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             print('state = CUE_FIXATION')
                             
                     if state == 'CUE_FIXATION':
-                        # The animal should not be able to view the cue twice by breaking fixation, so we display the cue for a fixed amount of time,
-                        # regardless of whether the animal maintains fixation
+                        eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
+                        if eye_dist_from_tgt > fsm_parameter['rew_area']/2 or self.eye_blink:
+                            state_start_time = self.t
+                            state_inter_time = self.t
+                            state = 'STR_TARGET_PURSUIT'
+                            print('state = STR_TARGET_PURSUIT, broke fixation')
 
                         if (self.t-state_inter_time) >= fsm_parameter['cue_duration']:
                             state_start_time = self.t
@@ -626,6 +652,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                   
                             self.tgt.draw()
                             self.pd_tgt.draw()
+                            if fsm_parameter['keep_cue_on']:
+                                self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
                             self.window.flip()
                             
                     if state == 'MASK_CUE':
@@ -653,6 +681,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t   
                             self.trial_data['state_start_t_ecc_tgt_present'].append(self.t)
                             
+                            if fsm_parameter['keep_cue_on']:
+                                self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
+                                if fsm_parameter['center_cue']:
+                                    self.tgt.draw()
+                            
                             lib.playSound(1000,0.1) # Neutral beep
                             for counter_tgt in range(len(tgt_display_coords)):
                                 distractor_pos = tgt_display_coords[counter_tgt]
@@ -663,6 +696,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.tgt_y = self.cue_y
                             self.tgt.pos = (self.tgt_x,self.tgt_y)                   
                             self.tgt.draw()
+                                    
                             self.pd_tgt.draw()
                             self.write_Dout(0,0)
                             self.window.flip()
@@ -731,7 +765,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             unit_saccade_dir_vector = saccade_dir_vector/np.linalg.norm(saccade_dir_vector)                    
                             angle_diff = np.arccos(np.dot(unit_target_dir_vector, unit_saccade_dir_vector))
 
-                            if angle_diff < np.pi/2:
+                            if angle_diff < np.pi/2 and fsm_parameter['include_corr_sac']:
                                 self.tgt.pos = (self.end_x,self.end_y)              
                                 self.tgt.draw()
                                 
@@ -754,8 +788,12 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 state_inter_time = self.t
                                   
                                 self.trial_data['state_start_t_corr_sac'].append(self.t)
-                                state = 'CORR_SACCADE'
-                                print('state = CORR_SACCADE')
+                                if fsm_parameter['include_corr_sac']:
+                                    state = 'CORR_SACCADE'
+                                    print('state = CORR_SACCADE')
+                                else:
+                                    state = 'DELIVER_REWARD'
+                                    print('state = DELIVER_REWARD')
                               
                             else:
                                 state_start_time = self.t
@@ -830,7 +868,6 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         
                             
                     if state == 'DELIVER_REWARD':
-                        
                         if (trial_num % fsm_parameter['pump_switch_interval']) == 0:
                             if pump_to_use == 1:
                                 pump_to_use = 2
@@ -845,6 +882,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             lib.playSound(2000,0.1) # Higher reward if he gets it right without guess-and-check
                         else:
                             lib.playSound(2000,0.1)
+                        
+                        
                         state_start_time = self.t
                         state_inter_time = self.t
                         self.trial_data['state_start_t_end_tgt_fixation'].append(self.t)
@@ -889,7 +928,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             
                     if state == 'WRONG_TARGET':
                         #pump_to_use = 2
-                        lib.playSound(500,0.1)
+                        #lib.playSound(500,0.1)
+                        wrong_tgt_indicator = True
                         state_start_time = self.t
                         state_inter_time = self.t
                         self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
@@ -905,11 +945,25 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             # Get trial eye data from eye process
                             self.get_trial_eye_data()
                             
+                            if trial_num % int(fsm_parameter['dir_switch_interval']) == 0:
+                                print(f'current_dir_before: {current_dir}')
+                                if current_dir == 0:
+                                    current_dir = 1
+                                else:
+                                    current_dir = 0
+                                print(f'current_dir_after: {current_dir}')
+                                self.moving_avg_acc = deque(maxlen=moving_avg_samp_num)
+                                self.fsm_to_gui_sndr.send(('log','Switched Target Direction to '+str(current_dir)))
+                            
                             # Send trial data to GUI
                             if num_tgt_display > 0:
-                                if not wrong_tgt_bool:
+                                if not wrong_tgt_indicator:
                                     self.num_correct += 1
-                                self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed. ' +str(self.num_correct)+'/'+str(self.num_choice)+' ('+str(int(100*self.num_correct/self.num_choice))+'%)'))
+                                    self.moving_avg_acc.append(1)
+                                else:
+                                    self.moving_avg_acc.append(0)
+                                    
+                                self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed. ' +str(self.num_correct)+'/'+str(self.num_choice)+' ('+str(int(100*self.num_correct/self.num_choice))+'%), Moving Avg: '+str(int(100*np.mean(np.array(self.moving_avg_acc))))+'%'))
                             else:
                                 self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed.'))
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
@@ -1082,7 +1136,13 @@ class DelaySacFsmProcess(multiprocessing.Process):
                      'fixed_cue_pos':True,
                      'first_cue_dir':90,
                      'num_cue_dir':1,
-                     'center_cue':True
+                     'center_cue':True,
+                     'keep_cue_on':False,
+                     'include_corr_sac':True,
+                     'dir_switch_interval':20,
+                     'moving_avg_samp_num':10,
+                     'second_dir':0,
+                     'pump_to_use':1
                      }
         return parameter
         
@@ -1153,7 +1213,7 @@ class DelaySacGui(FsmGui):
         #self.max_allow_time_QDoubleSpinBox.valueChanged.connect(self.max_allow_time_QDoubleSpinBox_valueChanged)
         self.min_fix_time_QDoubleSpinBox.valueChanged.connect(self.min_fix_time_QDoubleSpinBox_valueChanged)
         self.max_wait_fixation_QDoubleSpinBox.valueChanged.connect(self.max_wait_fixation_QDoubleSpinBox_valueChanged)
-        #self.pun_time_QDoubleSpinBox.valueChanged.connect(self.pun_time_QDoubleSpinBox_valueChanged)
+        self.pun_time_QDoubleSpinBox.valueChanged.connect(self.pun_time_QDoubleSpinBox_valueChanged)
         self.time_to_reward_QDoubleSpinBox.valueChanged.connect(self.time_to_reward_QDoubleSpinBox_valueChanged)
         self.sac_detect_threshold_QDoubleSpinBox.valueChanged.connect(self.sac_detect_threshold_QDoubleSpinBox_valueChanged)
         self.sac_on_off_threshold_QDoubleSpinBox.valueChanged.connect(self.sac_on_off_threshold_QDoubleSpinBox_valueChanged)
@@ -1185,6 +1245,13 @@ class DelaySacGui(FsmGui):
         self.fixed_cue_pos_QCheckBox.stateChanged.connect(self.fixed_cue_pos_QCheckBox_stateChanged)
         self.first_cue_dir_QDoubleSpinBox.valueChanged.connect(self.first_cue_dir_QDoubleSpinBox_valueChanged)
         self.num_cue_dir_QDoubleSpinBox.valueChanged.connect(self.num_cue_dir_QDoubleSpinBox_valueChanged)
+        self.keep_cue_on_QCheckBox.stateChanged.connect(self.keep_cue_on_QCheckBox_stateChanged)
+        self.include_corr_sac_QCheckBox.stateChanged.connect(self.include_corr_sac_QCheckBox_stateChanged)
+        
+        self.second_dir_QDoubleSpinBox.valueChanged.connect(self.second_dir_QDoubleSpinBox_valueChanged)
+        self.mov_avg_samp_QDoubleSpinBox.valueChanged.connect(self.mov_avg_samp_QDoubleSpinBox_valueChanged)
+        self.dir_switch_interval_QDoubleSpinBox.valueChanged.connect(self.dir_switch_interval_QDoubleSpinBox_valueChanged)
+        self.pump_to_use_QComboBox.currentIndexChanged.connect(self.pump_to_use_QComboBox_indexChanged)
         
         self.save_QPushButton.clicked.connect(self.save_QPushButton_clicked)
         
@@ -1394,6 +1461,10 @@ class DelaySacGui(FsmGui):
         self.exp_parameter['cue_type'] = self.cue_types[self.cue_type_QComboBox.currentIndex()]
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
+    def pump_to_use_QComboBox_indexChanged(self):
+        self.exp_parameter['pump_to_use'] = self.pump_to_use_QComboBox.currentIndex() + 1
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
     def num_tgt_display_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['num_tgt_display'] = int(self.num_tgt_display_QDoubleSpinBox.value())
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
@@ -1443,6 +1514,27 @@ class DelaySacGui(FsmGui):
     @pyqtSlot()
     def num_cue_dir_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['num_cue_dir'] = self.num_cue_dir_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def keep_cue_on_QCheckBox_stateChanged(self):
+        self.exp_parameter['keep_cue_on'] = self.keep_cue_on_QCheckBox.isChecked()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def include_corr_sac_QCheckBox_stateChanged(self):
+        self.exp_parameter['include_corr_sac'] = self.include_corr_sac_QCheckBox.isChecked()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+        
+    @pyqtSlot()
+    def second_dir_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['second_dir'] = self.second_dir_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def mov_avg_samp_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['moving_avg_samp_num'] = self.mov_avg_samp_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def dir_switch_interval_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['dir_switch_interval'] = self.dir_switch_interval_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
         
         
@@ -1660,6 +1752,18 @@ class DelaySacGui(FsmGui):
         self.first_prim_sac_dir_QHBoxLayout.addWidget(self.first_prim_sac_dir_QDoubleSpinBox)
         self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.first_prim_sac_dir_QHBoxLayout)
         
+        self.second_dir_QHBoxLayout = QHBoxLayout()
+        self.second_dir_QLabel = QLabel("Alternate direction (deg):")
+        self.second_dir_QLabel.setAlignment(Qt.AlignRight)
+        self.second_dir_QHBoxLayout.addWidget(self.second_dir_QLabel)
+        self.second_dir_QDoubleSpinBox = QDoubleSpinBox()
+        self.second_dir_QDoubleSpinBox.setValue(0)
+        self.second_dir_QDoubleSpinBox.setMaximum(359)
+        self.second_dir_QDoubleSpinBox.setSingleStep(1)
+        self.second_dir_QDoubleSpinBox.setDecimals(0)
+        self.second_dir_QHBoxLayout.addWidget(self.second_dir_QDoubleSpinBox)
+        self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.second_dir_QHBoxLayout)
+        
         self.num_corr_sac_dir_QHBoxLayout = QHBoxLayout()
         self.num_corr_sac_dir_QLabel = QLabel("Number of corr. sac. direction:")
         self.num_corr_sac_dir_QLabel.setAlignment(Qt.AlignRight)
@@ -1673,7 +1777,7 @@ class DelaySacGui(FsmGui):
         self.num_corr_sac_dir_QHBoxLayout.addWidget(self.num_corr_sac_dir_QDoubleSpinBox)
         self.sidepanel_params_2_tab_QVBoxLayout.addLayout(self.num_corr_sac_dir_QHBoxLayout)
         
-        '''
+        
         self.pun_time_QHBoxLayout = QHBoxLayout()
         self.pun_time_QLabel = QLabel("Punishment time (s):")
         self.pun_time_QLabel.setAlignment(Qt.AlignRight)
@@ -1684,8 +1788,8 @@ class DelaySacGui(FsmGui):
         self.pun_time_QDoubleSpinBox.setSingleStep(0.1)
         self.pun_time_QDoubleSpinBox.setDecimals(1)
         self.pun_time_QHBoxLayout.addWidget(self.pun_time_QDoubleSpinBox)
-        self.sidepanel_custom_QVBoxLayout.addLayout(self.pun_time_QHBoxLayout)
-        '''
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pun_time_QHBoxLayout)
+        
         
         self.sac_detect_threshold_QHBoxLayout = QHBoxLayout()
         self.sac_detect_threshold_QLabel = QLabel("Saccade detection threshold (deg/s):")
@@ -1804,6 +1908,15 @@ class DelaySacGui(FsmGui):
         self.cue_type_QHBoxLayout.addWidget(self.cue_type_QComboBox)
         self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.cue_type_QHBoxLayout)
         
+        self.pump_to_use_QHBoxLayout = QHBoxLayout()
+        self.pump_to_use_QLabel = QLabel("Pump to Use:")
+        self.pump_to_use_QLabel.setAlignment(Qt.AlignRight)
+        self.pump_to_use_QHBoxLayout.addWidget(self.pump_to_use_QLabel)
+        self.pump_to_use_QComboBox = QComboBox()
+        self.pump_to_use_QComboBox.addItems(['1','2'])
+        self.pump_to_use_QHBoxLayout.addWidget(self.pump_to_use_QComboBox)
+        self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pump_to_use_QHBoxLayout)
+        
         self.ambiguity_prob_QHBoxLayout = QHBoxLayout()
         self.ambiguity_prob_QLabel = QLabel("Probability of Ambiguous Cue:")
         self.ambiguity_prob_QLabel.setAlignment(Qt.AlignRight)
@@ -1849,6 +1962,12 @@ class DelaySacGui(FsmGui):
         self.center_cue_QCheckBox = QCheckBox('Cue at Center Fixation')
         self.sidepanel_params_4_tab_QVBoxLayout.addWidget(self.center_cue_QCheckBox)
         
+        self.keep_cue_on_QCheckBox = QCheckBox('Keep Cue On')
+        self.sidepanel_params_4_tab_QVBoxLayout.addWidget(self.keep_cue_on_QCheckBox)
+        
+        self.include_corr_sac_QCheckBox = QCheckBox('Include Corrective Saccades')
+        self.sidepanel_params_4_tab_QVBoxLayout.addWidget(self.include_corr_sac_QCheckBox)
+        
         self.first_cue_dir_QHBoxLayout = QHBoxLayout()
         self.first_cue_dir_QLabel = QLabel("Cue Direction:")
         self.first_cue_dir_QLabel.setAlignment(Qt.AlignRight)
@@ -1873,6 +1992,29 @@ class DelaySacGui(FsmGui):
         self.num_cue_dir_QHBoxLayout.addWidget(self.num_cue_dir_QDoubleSpinBox)
         self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.num_cue_dir_QHBoxLayout)
         
+        self.mov_avg_samp_QHBoxLayout = QHBoxLayout()
+        self.mov_avg_samp_QLabel = QLabel("Moving Average Sample Length:")
+        self.mov_avg_samp_QLabel.setAlignment(Qt.AlignRight)
+        self.mov_avg_samp_QHBoxLayout.addWidget(self.mov_avg_samp_QLabel)
+        self.mov_avg_samp_QDoubleSpinBox = QDoubleSpinBox()
+        self.mov_avg_samp_QDoubleSpinBox.setValue(0)
+        self.mov_avg_samp_QDoubleSpinBox.setSingleStep(1)
+        self.mov_avg_samp_QDoubleSpinBox.setDecimals(0)
+        self.mov_avg_samp_QHBoxLayout.addWidget(self.mov_avg_samp_QDoubleSpinBox)
+        self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.mov_avg_samp_QHBoxLayout)
+        
+        self.dir_switch_interval_QHBoxLayout = QHBoxLayout()
+        self.dir_switch_interval_QLabel = QLabel("Direction Switch Interval:")
+        self.dir_switch_interval_QLabel.setAlignment(Qt.AlignRight)
+        self.dir_switch_interval_QHBoxLayout.addWidget(self.dir_switch_interval_QLabel)
+        self.dir_switch_interval_QDoubleSpinBox = QDoubleSpinBox()
+        self.dir_switch_interval_QDoubleSpinBox.setValue(0)
+        self.dir_switch_interval_QDoubleSpinBox.setSingleStep(1)
+        self.dir_switch_interval_QDoubleSpinBox.setDecimals(0)
+        self.dir_switch_interval_QHBoxLayout.addWidget(self.dir_switch_interval_QDoubleSpinBox)
+        self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.dir_switch_interval_QHBoxLayout)
+        
+        '''
         self.reverse_prob_QHBoxLayout = QHBoxLayout()
         self.reverse_prob_QLabel = QLabel("Probability of Reversed Cue:")
         self.reverse_prob_QLabel.setAlignment(Qt.AlignRight)
@@ -1884,6 +2026,7 @@ class DelaySacGui(FsmGui):
         self.reverse_prob_QDoubleSpinBox.setDecimals(2)
         self.reverse_prob_QHBoxLayout.addWidget(self.reverse_prob_QDoubleSpinBox)
         self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.reverse_prob_QHBoxLayout)
+        '''
         
         self.save_QPushButton = QPushButton('Save parameters')
         self.sidepanel_custom_QVBoxLayout.addWidget(self.save_QPushButton)
@@ -1930,7 +2073,13 @@ class DelaySacGui(FsmGui):
                          'fixed_cue_pos':True,
                          'first_cue_dir':90,
                          'num_cue_dir':1,
-                         'center_cue':False
+                         'center_cue':False,
+                         'keep_cue_on':False,
+                         'include_corr_sac':True,
+                         'second_dir':0,
+                         'dir_switch_interval':20,
+                         'moving_avg_samp_num':20,
+                         'pump_to_use':1
                          }
         return parameter
     
@@ -1943,7 +2092,7 @@ class DelaySacGui(FsmGui):
         #self.max_allow_time_QDoubleSpinBox.setValue(self.exp_parameter['max_allow_time'])
         self.min_fix_time_QDoubleSpinBox.setValue(self.exp_parameter['min_fix_time'])
         self.max_wait_fixation_QDoubleSpinBox.setValue(self.exp_parameter['max_wait_for_fixation'])
-        #self.pun_time_QDoubleSpinBox.setValue(self.exp_parameter['pun_time'])
+        self.pun_time_QDoubleSpinBox.setValue(self.exp_parameter['pun_time'])
         self.time_to_reward_QDoubleSpinBox.setValue(self.exp_parameter['time_to_reward'])
         self.sac_detect_threshold_QDoubleSpinBox.setValue(self.exp_parameter['sac_detect_threshold'])
         self.sac_on_off_threshold_QDoubleSpinBox.setValue(self.exp_parameter['sac_on_off_threshold'])
@@ -1971,10 +2120,22 @@ class DelaySacGui(FsmGui):
         self.ambiguity_prob_QDoubleSpinBox.setValue(self.exp_parameter['ambiguity_prob'])
         self.choice_prob_QDoubleSpinBox.setValue(self.exp_parameter['choice_prob'])
         
+        if self.exp_parameter['pump_to_use'] == 1:
+            self.exp_parameter['pump_to_use'] = 2
+        else:
+            self.exp_parameter['pump_to_use'] = 1
+        self.pump_to_use_QComboBox.setCurrentIndex(self.exp_parameter['pump_to_use'] - 1)
+        
         self.fixed_cue_pos_QCheckBox.setChecked(self.exp_parameter['fixed_cue_pos'])
         self.first_cue_dir_QDoubleSpinBox.setValue(self.exp_parameter['first_cue_dir'])
         self.num_cue_dir_QDoubleSpinBox.setValue(self.exp_parameter['num_cue_dir'])
         self.center_cue_QCheckBox.setChecked(self.exp_parameter['center_cue'])
+        self.keep_cue_on_QCheckBox.setChecked(self.exp_parameter['keep_cue_on'])
+        self.include_corr_sac_QCheckBox.setChecked(self.exp_parameter['include_corr_sac'])
+        
+        self.second_dir_QDoubleSpinBox.setValue(self.exp_parameter['second_dir'])
+        self.mov_avg_samp_QDoubleSpinBox.setValue(self.exp_parameter['moving_avg_samp_num'])
+        self.dir_switch_interval_QDoubleSpinBox.setValue(self.exp_parameter['dir_switch_interval'])
         
         if self.center_cue_QCheckBox.isChecked():
             self.fixed_cue_pos_QCheckBox.setDisabled(True)

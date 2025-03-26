@@ -3,7 +3,7 @@
         "cue_length": 2,
         "cue_width":0.4,
         "circle_size":0.7,
-        "fill_color": [0.3,0.3,0.3],
+        "fill_color": [0.2,0.3,0.8],
         "line_color": "black",
         "circle_color":"black",
         "line_width":3,
