@@ -430,7 +430,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         self.trial_data['end_x'].append(self.end_x)
                         self.trial_data['end_y'].append(self.end_y)
                         
-                        cues = ['arrow','landolt']
+                        cues = ['arrow','landolt','circle']
                         cue_type = fsm_parameter['cue_type']
                         if cue_type == 'both':
                             cue_type = cues[random.randint(0,1)]
@@ -454,11 +454,14 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         cue_duration = fsm_parameter['cue_duration']
                         display_cue = True
                         display_tgt = True
+                        reward_fixation = False
                         if np.random.rand() > fsm_parameter['cue_probability']:
                             cue_duration = 0
                             display_cue = False
+                            reward_fixation = True
                         elif np.random.rand() > fsm_parameter['tgt_prob']:
                             display_tgt = False
+                            reward_fixation = True
                             
                         self.trial_data['display_cue'].append(int(display_cue))
                         self.trial_data['display_tgt'].append(int(display_tgt))
@@ -543,6 +546,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             cue_idx = random.randint(0,len(cue_pos_list)-1)
                             self.cue.pos = cue_pos_list[cue_idx]
                                
+                        
                         
                         state_start_time = self.t
                         state_inter_time = self.t
@@ -652,12 +656,18 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if eye_dist_from_tgt > fsm_parameter['rew_area']/2 or self.eye_blink:
                             state_start_time = self.t
                             state_inter_time = self.t
-                            state = 'STR_TARGET_PURSUIT'
-                            print('state = STR_TARGET_PURSUIT, broke fixation')
-
+                            state = 'INCORRECT_SACCADE'
+                            #print('state = STR_TARGET_PURSUIT, broke fixation')
+                            print('state = INCORRECT_SACCADE, broke fixation')
+                            self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
+                            
+                            self.pd_tgt.draw()
+                            self.window.flip()
+                            
                         if (self.t-state_inter_time) >= fsm_parameter['cue_duration']:
                             state_start_time = self.t
                             state_inter_time = self.t
+                            
                             
                             if fsm_parameter['mask_duration'] > 1e-3:     
                                 self.draw_cue(cue_type,fsm_parameter['center_cue'],True)
@@ -672,6 +682,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             
                             if fsm_parameter['keep_cue_on']:
                                 self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
+                            
                             self.tgt.draw()
                             self.pd_tgt.draw()
                             self.window.flip()
@@ -701,29 +712,37 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t   
                             self.trial_data['state_start_t_ecc_tgt_present'].append(self.t)
                             
-                            if fsm_parameter['keep_cue_on'] and display_cue:
-                                self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
-                                #if fsm_parameter['center_cue']:
-                                #    self.tgt.draw()
+                            if reward_fixation:
+                                print('state = DELIVER_REWARD')
+                                state = 'DELIVER_REWARD'
+                                self.trial_data['state_start_t_deliver_rew'].append(self.t)
+                            else:
                             
-                            lib.playSound(1000,0.1) # Neutral beep
-                            if display_tgt:
-                                for counter_tgt in range(len(tgt_display_coords)):
-                                    distractor_pos = tgt_display_coords[counter_tgt]
-                                    self.tgt.pos = (distractor_pos[0], distractor_pos[1])
-                                    self.tgt.draw()
+                                if fsm_parameter['keep_cue_on']:
+                                    self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
+                                    #if fsm_parameter['center_cue']:
+                                    #    self.tgt.draw()
+                            
+                                lib.playSound(1000,0.1) # Neutral beep
+                                if display_tgt:
+                                    for counter_tgt in range(len(tgt_display_coords)):
+                                        distractor_pos = tgt_display_coords[counter_tgt]
+                                        self.tgt.pos = (distractor_pos[0], distractor_pos[1])
+                                        #self.tgt.draw()
+                                        self.draw_tgt(cue_type)
                                 
-                            self.tgt_x = self.cue_x
-                            self.tgt_y = self.cue_y
-                            self.tgt.pos = (self.tgt_x,self.tgt_y)
-                            if fsm_parameter['num_tgt_display'] > 0 and display_tgt:             
-                                self.tgt.draw()
+                                self.tgt_x = self.cue_x
+                                self.tgt_y = self.cue_y
+                                self.tgt.pos = (self.tgt_x,self.tgt_y)
+                                if fsm_parameter['num_tgt_display'] > 0 and display_tgt:             
+                                    #self.tgt.draw()
+                                    self.draw_tgt(cue_type)
                                     
-                            self.pd_tgt.draw()
-                            self.write_Dout(0,0)
-                            self.window.flip()
-                            state = 'ECCENTRIC_TGT_PRESENT'
-                            print('state = ECCENTRIC_TGT_PRESENT')
+                                self.pd_tgt.draw()
+                                self.write_Dout(0,0)
+                                self.window.flip()
+                                state = 'ECCENTRIC_TGT_PRESENT'
+                                print('state = ECCENTRIC_TGT_PRESENT')
                             
                         if (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             state_start_time = self.t
@@ -789,7 +808,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
 
                             if angle_diff < np.pi/2 and fsm_parameter['include_corr_sac']:
                                 self.tgt.pos = (self.end_x,self.end_y)              
-                                self.tgt.draw()
+                                #self.tgt.draw()
+                                self.draw_tgt(cue_type)
                                 
                             self.pd_tgt.draw()
                             self.window.flip()
@@ -910,7 +930,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         state_inter_time = self.t
                         self.trial_data['state_start_t_end_tgt_fixation'].append(self.t)
                         #if fsm_parameter['num_tgt_display'] > 0:
-                        self.tgt.draw()
+                        #self.tgt.draw()
+                        if reward_fixation:
+                            self.tgt.draw()
+                        else:
+                            self.draw_tgt(cue_type)
                         
                         self.write_Dout(1,1)
                         self.window.flip()
@@ -1032,6 +1056,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
         pd_tgt_parameter,_ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'pd_tgt')
         arrow_param,_ = lib.load_parameter('','cue_parameter.json',True,False,lib.set_default_tgt_parameter,'arrow')
         landolt_param,_ = lib.load_parameter('','cue_parameter.json',True,False,lib.set_default_tgt_parameter,'landolt')
+        circle_param,_ = lib.load_parameter('','cue_parameter.json',True,False,lib.set_default_tgt_parameter,'circle')
+        cross_param,_ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'cross')
         
         self.tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg', 
                       lineColor=tgt_parameter['line_color'],fillColor=tgt_parameter['fill_color'],
@@ -1054,6 +1080,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.arrow_mask = visual.Circle(win=self.window,size=2*arrow_param['cue_length'],fillColor=arrow_param['fill_color'])
         self.cue = self.cue_shapes[0]
         
+        self.cue_ring = visual.Circle(win=self.window,size=circle_param['outer_size'],fillColor=circle_param['fill_color'],units='deg', lineColor=circle_param['line_color'],lineWidth=circle_param['line_width'])
+        self.cue_white_circ = visual.Circle(win=self.window,size=circle_param['inner_size'],fillColor=(1,1,1),units='deg', lineColor=circle_param['line_color'],lineWidth=circle_param['line_width'])
+        self.tgt_cross_1 = visual.Rect(win=self.window,width=cross_param['width'],height=cross_param['height'],units='deg', fillColor=tgt_parameter['fill_color'],ori=45)
+        self.tgt_cross_2 = visual.Rect(win=self.window,width=cross_param['width'],height=cross_param['height'],units='deg', fillColor=tgt_parameter['fill_color'],ori=-45)
+        
         self.landolt_c = visual.Circle(win=self.window,size=landolt_param['size'], lineColor=landolt_param['line_color'],fillColor=landolt_param['line_color'],lineWidth=0, units='deg')
         self.landolt_circ_inner = visual.Circle(win=self.window,size=landolt_param['size'] - landolt_param['line_width'], fillColor="white", lineWidth=0, units="deg")
         self.landolt_rect = visual.Rect(win=self.window,width=landolt_param['rect_width'],height=landolt_param['rect_height'],fillColor=landolt_param['rect_color'], lineColor=landolt_param['rect_color'])
@@ -1061,6 +1092,15 @@ class DelaySacFsmProcess(multiprocessing.Process):
         #self.pd_tgt.draw()
         self.window.clearBuffer() # clear the back buffer of previously drawn stimuli - Poth, 2018
         
+    def draw_tgt(self,cue_type):
+        if cue_type == 'circle':
+            self.tgt_cross_1.pos = self.tgt.pos
+            self.tgt_cross_2.pos = self.tgt.pos
+            self.tgt_cross_1.draw()
+            self.tgt_cross_2.draw()
+        else:
+            self.tgt.draw()
+            
     def draw_cue(self,cue_type,center_cue,mask):
         if cue_type == 'arrow':
             if mask:
@@ -1071,7 +1111,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
             if not center_cue: #This draws the arrow underneath the circle
                 self.cue_circle.pos = self.cue.pos 
                 self.cue_circle.draw()
-        else:
+        elif cue_type == 'landolt':
             self.landolt_rect.pos = self.cue.pos + self.landolt_rect_pos
             #self.landolt_rect.pos = self.cue.pos
             self.landolt_circ_inner.pos = self.cue.pos
@@ -1079,6 +1119,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
             self.landolt_circ_inner.draw()
             if not mask:
                 self.landolt_rect.draw()
+        else:
+            self.cue_ring.pos = [self.cue_x,self.cue_y]
+            self.cue_white_circ.pos = self.cue_ring.pos
+            self.cue_ring.draw()
+            self.cue_white_circ.draw()
     
     def write_Dout(self,dout_ch1_value,dout_ch5_value):
         with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
@@ -1219,7 +1264,7 @@ class DelaySacGui(FsmGui):
         
         self.mouse_mode = False
         
-        self.cue_types = ['arrow','landolt','both']
+        self.cue_types = ['arrow','landolt','both','circle']
 
         which_eye_tracked = self.cal_parameter['which_eye_tracked'].lower()
         if not self.cal_parameter[which_eye_tracked + '_cal_status']:
@@ -1942,7 +1987,7 @@ class DelaySacGui(FsmGui):
         self.cue_type_QLabel.setAlignment(Qt.AlignRight)
         self.cue_type_QHBoxLayout.addWidget(self.cue_type_QLabel)
         self.cue_type_QComboBox = QComboBox()
-        self.cue_type_QComboBox.addItems(['Arrow', 'Landolt C', 'Both'])
+        self.cue_type_QComboBox.addItems(['Arrow', 'Landolt C', 'Both','Circle'])
         self.cue_type_QHBoxLayout.addWidget(self.cue_type_QComboBox)
         self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.cue_type_QHBoxLayout)
         
@@ -2173,7 +2218,7 @@ class DelaySacGui(FsmGui):
         self.cue_duration_QDoubleSpinBox.setValue(self.exp_parameter['cue_duration'])
         self.mask_duration_QDoubleSpinBox.setValue(self.exp_parameter['mask_duration'])
         self.cue_probability_QDoubleSpinBox.setValue(self.exp_parameter['cue_probability'])
-        cue_types = ['arrow','landolt','both']
+        cue_types = ['arrow','landolt','both','circle']
         self.cue_type_QComboBox.setCurrentIndex(cue_types.index(self.exp_parameter['cue_type']))
         self.min_delay_QDoubleSpinBox.setValue(self.exp_parameter['min_delay'])
         self.max_delay_QDoubleSpinBox.setValue(self.exp_parameter['max_delay'])
