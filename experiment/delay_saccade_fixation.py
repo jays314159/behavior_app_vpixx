@@ -302,6 +302,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 self.send_data_t = self.t
                 random_signal_t = self.t
                 trial_num = 1
+                self.num_false_start = 0
                 pump_to_use = fsm_parameter['pump_to_use']
                 print(f'PUMP_TO_USE: {pump_to_use}')
                 vel_samp_num = 3
@@ -323,6 +324,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 eye_x_data = deque(maxlen=vel_samp_num)
                 eye_y_data = deque(maxlen=vel_samp_num)
                 self.moving_avg_acc = deque(maxlen=moving_avg_samp_num)
+                self.moving_avg_fs = deque(maxlen=moving_avg_samp_num)
                 eye_pos = [0,0]
                 eye_vel = [0,0]
                 eye_speed = 0.0
@@ -457,11 +459,13 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         reward_fixation = False
                         if np.random.rand() > fsm_parameter['cue_probability']:
                             cue_duration = 0
+                            delay_time = 0
                             display_cue = False
-                            reward_fixation = True
+                            reward_fixation = False
                         elif np.random.rand() > fsm_parameter['tgt_prob']:
-                            display_tgt = False
+                            #display_tgt = False
                             reward_fixation = True
+                            
                             
                         self.trial_data['display_cue'].append(int(display_cue))
                         self.trial_data['display_tgt'].append(int(display_tgt))
@@ -492,7 +496,6 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 else:
                                     curr_idx = (tgt_indx_dict[tgt_idx] + counter_tgt) % (num_tgt_display+1)
                                 tgt_display_list.append(curr_idx)
-                                print(curr_idx)
                         
                                 
                         tgt_display_byte = 0    
@@ -546,6 +549,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             cue_idx = random.randint(0,len(cue_pos_list)-1)
                             self.cue.pos = cue_pos_list[cue_idx]
                             
+                        keep_cue_on = False
                         if fsm_parameter['keep_cue_on']:
                             cue_on_prob = 1
                             if np.random.rand() < cue_on_prob:
@@ -553,7 +557,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             else:
                                 keep_cue_on = False
                                
-                        
+                        false_start_bool = False
                         
                         state_start_time = self.t
                         state_inter_time = self.t
@@ -571,8 +575,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         pursuit_y = pursuit_v_y*(self.t-state_start_time) + pursuit_start_y  
                         self.tgt_x = pursuit_x
                         self.tgt_y = pursuit_y
-                        self.tgt.pos = (self.tgt_x,self.tgt_y)
-                        self.tgt.draw()
+                        self.fix_tgt.pos = (self.tgt_x,self.tgt_y)
+                        self.fix_tgt.draw()
                         self.pd_tgt.draw()
                         self.window.flip()
                         if (self.t-state_start_time) > fsm_parameter['pursuit_dur']:
@@ -581,7 +585,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_str_tgt_present'].append(self.t)
                             state = 'STR_TARGET_PRESENT'
                             print('state = STR_TARGET_PRESENT')
-                            self.tgt.draw()
+                            self.fix_tgt.draw()
                             self.write_Dout(1,1)
                             
                             self.window.flip()
@@ -597,8 +601,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if not self.eye_blink:
                             self.tgt_x = self.start_x
                             self.tgt_y = self.start_y
-                            self.tgt.pos = (self.tgt_x,self.tgt_y) 
-                            self.tgt.draw()
+                            self.fix_tgt.pos = (self.tgt_x,self.tgt_y) 
+                            self.fix_tgt.draw()
                             self.window.flip()
                             state_start_time = self.t
                             state_inter_time = self.t
@@ -616,7 +620,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state = 'STR_TARGET_PURSUIT'
                             
                     if state == 'STR_TARGET_FIXATION':
-                        eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
+                        eye_dist_from_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
                         # If eye not available or fixating at the start target, reset the timer
                         if eye_dist_from_tgt > fsm_parameter['rew_area']/2 or self.eye_blink:
                             state_inter_time = self.t
@@ -645,13 +649,31 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.window.flip()
                             state = 'STR_TARGET_PURSUIT'  
                             
-                    if state == 'DISPLAY_CUE': # This is the state where you wait while the cue is displayed
+                    if state == 'DISPLAY_CUE': # Display all targets and cue simultaneously
                         if not self.eye_blink:
-                            self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
-                            self.tgt.draw()
+                            self.fix_tgt.draw()
+                            
+                            if display_cue:
+                                self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
+                           
+                            if display_tgt:
+                                for counter_tgt in range(len(tgt_display_coords)):
+                                    distractor_pos = tgt_display_coords[counter_tgt]
+                                    self.tgt.pos = (distractor_pos[0], distractor_pos[1])
+                                    #self.tgt.draw()
+                                    self.draw_tgt(cue_type)
+                                
+                            self.tgt_x = self.cue_x
+                            self.tgt_y = self.cue_y
+                            self.tgt.pos = (self.tgt_x,self.tgt_y)
+                            if fsm_parameter['num_tgt_display'] > 0 and display_tgt:             
+                                #self.tgt.draw()
+                                self.draw_tgt(cue_type)
+                                    
                             self.pd_tgt.draw()
                             self.write_Dout(0,0)
                             self.window.flip()
+
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_cue_fixation'].append(self.t)
@@ -659,11 +681,12 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             print('state = CUE_FIXATION')
                             
                     if state == 'CUE_FIXATION':
-                        eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
+                        eye_dist_from_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
                         if eye_dist_from_tgt > fsm_parameter['rew_area']/2 or self.eye_blink:
                             state_start_time = self.t
                             state_inter_time = self.t
                             state = 'INCORRECT_SACCADE'
+                            false_start_bool = True
                             #print('state = STR_TARGET_PURSUIT, broke fixation')
                             print('state = INCORRECT_SACCADE, broke fixation')
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
@@ -675,22 +698,31 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             
-                            
-                            if fsm_parameter['mask_duration'] > 1e-3:     
-                                self.draw_cue(cue_type,fsm_parameter['center_cue'],True)
-                                self.trial_data['state_start_t_mask_cue'].append(self.t)
-                                state = 'MASK_CUE'
-                                print('state = MASK_CUE')
-                            else:
+                            if delay_time > 1e-3:
+                                if display_tgt:
+                                    for counter_tgt in range(len(tgt_display_coords)):
+                                        distractor_pos = tgt_display_coords[counter_tgt]
+                                        self.tgt.pos = (distractor_pos[0], distractor_pos[1])
+                                        #self.tgt.draw()
+                                        self.draw_tgt(cue_type)
+                                
+                                self.tgt_x = self.cue_x
+                                self.tgt_y = self.cue_y
+                                self.tgt.pos = (self.tgt_x,self.tgt_y)
+                                if fsm_parameter['num_tgt_display'] > 0 and display_tgt:             
+                                    #self.tgt.draw()
+                                    self.draw_tgt(cue_type)
+                                    self.trial_data['state_start_t_delay_fixation'].append(self.t)
+                                   
                                 state = 'DELAY_FIXATION'
-                                self.trial_data['state_start_t_delay_fixation'].append(self.t)
                                 print('state = DELAY_FIXATION')
-                                  
+                            else:
+                                
+                                state = 'SACCADE_GO_CUE'
+                                print('state = SACCADE_GO_CUE')
+                                
                             
-                            if keep_cue_on:
-                                self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
-                            
-                            self.tgt.draw()
+                            self.fix_tgt.draw()
                             self.pd_tgt.draw()
                             self.window.flip()
                             
@@ -708,48 +740,27 @@ class DelaySacFsmProcess(multiprocessing.Process):
                    
                             
                     if state == 'DELAY_FIXATION':
-                        eye_dist_from_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
-                        # If not fixating, restart the delay state. This ensures that the animal must fixate for the full delay,
-                        # while also making sure that it can't get the cue to show multiple times.
+                        eye_dist_from_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
+                        
                         if eye_dist_from_tgt > fsm_parameter['rew_area']/2 or self.eye_blink:
+                            state_start_time = self.t
                             state_inter_time = self.t
+                            state = 'INCORRECT_SACCADE'
+                            false_start_bool = True
+                            #print('state = STR_TARGET_PURSUIT, broke fixation')
+                            print('state = INCORRECT_SACCADE, broke fixation')
+                            self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
+                            
+                            self.pd_tgt.draw()
+                            self.window.flip()
                             
                         if (self.t-state_inter_time) >= delay_time:
                             state_start_time = self.t
                             state_inter_time = self.t   
-                            self.trial_data['state_start_t_ecc_tgt_present'].append(self.t)
                             
-                            if reward_fixation:
-                                print('state = DELIVER_REWARD')
-                                state = 'DELIVER_REWARD'
-                                self.trial_data['state_start_t_deliver_rew'].append(self.t)
-                            else:
                             
-                                if keep_cue_on:
-                                    self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
-                                    #if fsm_parameter['center_cue']:
-                                    #    self.tgt.draw()
-                            
-                                lib.playSound(1000,0.1) # Neutral beep
-                                if display_tgt:
-                                    for counter_tgt in range(len(tgt_display_coords)):
-                                        distractor_pos = tgt_display_coords[counter_tgt]
-                                        self.tgt.pos = (distractor_pos[0], distractor_pos[1])
-                                        #self.tgt.draw()
-                                        self.draw_tgt(cue_type)
-                                
-                                self.tgt_x = self.cue_x
-                                self.tgt_y = self.cue_y
-                                self.tgt.pos = (self.tgt_x,self.tgt_y)
-                                if fsm_parameter['num_tgt_display'] > 0 and display_tgt:             
-                                    #self.tgt.draw()
-                                    self.draw_tgt(cue_type)
-                                    
-                                self.pd_tgt.draw()
-                                self.write_Dout(0,0)
-                                self.window.flip()
-                                state = 'ECCENTRIC_TGT_PRESENT'
-                                print('state = ECCENTRIC_TGT_PRESENT')
+                            print('state = SACCADE_GO_CUE')
+                            state = 'SACCADE_GO_CUE'
                             
                         if (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             state_start_time = self.t
@@ -761,7 +772,46 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.window.flip()
                             state = 'STR_TARGET_PURSUIT'
                             
+                    if state == 'SACCADE_GO_CUE':
+                        state_start_time = self.t
+                        state_inter_time = self.t
+                        if reward_fixation:
+                            self.fix_tgt.draw()
+                            self.pd_tgt.draw()
+                            self.window.flip()
                             
+                            print('state = DELIVER_REWARD')
+                            state = 'DELIVER_REWARD'
+                            self.trial_data['state_start_t_deliver_rew'].append(self.t)
+                        
+                        else:
+                            if keep_cue_on:
+                                self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
+                            
+                            lib.playSound(1000,0.1) # Neutral beep
+                            if display_tgt:
+                                for counter_tgt in range(len(tgt_display_coords)):
+                                    distractor_pos = tgt_display_coords[counter_tgt]
+                                    self.tgt.pos = (distractor_pos[0], distractor_pos[1])
+                                    #self.tgt.draw()
+                                    self.draw_tgt(cue_type)
+                                
+                            self.tgt_x = self.cue_x
+                            self.tgt_y = self.cue_y
+                            self.tgt.pos = (self.tgt_x,self.tgt_y)
+                            if fsm_parameter['num_tgt_display'] > 0 and display_tgt:             
+                                #self.tgt.draw()
+                                self.draw_tgt(cue_type)
+                                    
+                            self.pd_tgt.draw()
+                            self.write_Dout(0,0)
+                            self.window.flip()    
+                            self.trial_data['state_start_t_detect_sac_start'].append(self.t)
+                            state = 'DETECT_SACCADE_START'
+                            print('state = DETECT_SACCADE_START')
+                        
+                        
+                               
                     if state == 'ECCENTRIC_TGT_PRESENT':
                         state_start_time = self.t
                         state_inter_time = self.t
@@ -925,21 +975,16 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.fsm_to_gui_sndr.send(('log','Pump switchd to '+str(pump_to_use)))
                         
                         self.fsm_to_gui_sndr.send(('pump',pump_to_use,'pump',0))
-                        print("Sent to GUI")
                         
-                        if pump_to_use == 1:                        
-                            lib.playSound(2000,0.1) # Higher reward if he gets it right without guess-and-check
-                        else:
-                            lib.playSound(2000,0.1)
+                        lib.playSound(2000,0.1)
                         
                         
                         state_start_time = self.t
                         state_inter_time = self.t
                         self.trial_data['state_start_t_end_tgt_fixation'].append(self.t)
                         #if fsm_parameter['num_tgt_display'] > 0:
-                        #self.tgt.draw()
                         if reward_fixation:
-                            self.tgt.draw()
+                            self.fix_tgt.draw()
                         else:
                             self.draw_tgt(cue_type)
                         
@@ -1010,6 +1055,14 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 self.num_correct = 0
                                 self.num_choice = 0
                                 self.fsm_to_gui_sndr.send(('log','Switched Target Direction to '+str(current_dir)))
+                                
+                            if false_start_bool:
+                                self.num_false_start += 1
+                                self.moving_avg_fs.append(1)
+                            else:
+                                self.moving_avg_fs.append(0)
+                                
+                            self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed. Successful Delay Rate: ' +str(trial_num - self.num_false_start)+'/'+str(trial_num)+' ('+str(int(100*(1-self.num_false_start/trial_num)))+'%), Moving Avg: '+str(int(100*(1-np.mean(np.array(self.moving_avg_fs)))))+'%'))
                             
                             # Send trial data to GUI
                             if num_tgt_display > 0:
@@ -1019,10 +1072,10 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 else:
                                     self.moving_avg_acc.append(0)
                                     
-                                self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed. ' +str(self.num_correct)+'/'+str(self.num_choice)+' ('+str(int(100*self.num_correct/self.num_choice))+'%), Moving Avg: '+str(int(100*np.mean(np.array(self.moving_avg_acc))))+'%'))
-                            else:
-                                self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed.'))
-                            self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
+                               #self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed. ' +str(self.num_correct)+'/'+str(self.num_choice)+' ('+str(int(100*self.num_correct/self.num_choice))+'%), Moving Avg: '+str(int(100*np.mean(np.array(self.moving_avg_acc))))+'%'))
+                            #else:
+                                #self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed.'))
+                            #self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             trial_num += 1
                             self.init_trial_data()  
                             self.trial_data['right_cal_matrix'] = cal_parameter['right_cal_matrix']
@@ -1086,6 +1139,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.cue_circle = visual.Circle(win=self.window,size=arrow_param['circle_size'],fillColor=arrow_param['circle_color'])
         self.arrow_mask = visual.Circle(win=self.window,size=2*arrow_param['cue_length'],fillColor=arrow_param['fill_color'])
         self.cue = self.cue_shapes[0]
+        self.fix_tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg', 
+                      lineColor=tgt_parameter['line_color'],fillColor=tgt_parameter['fill_color'],
+                      lineWidth=tgt_parameter['line_width'])
         
         self.cue_ring = visual.Circle(win=self.window,size=circle_param['outer_size'],fillColor=circle_param['fill_color'],units='deg', lineColor=circle_param['line_color'],lineWidth=circle_param['line_width'])
         self.cue_white_circ = visual.Circle(win=self.window,size=circle_param['inner_size'],fillColor=(1,1,1),units='deg', lineColor=circle_param['line_color'],lineWidth=circle_param['line_width'])
