@@ -4,7 +4,7 @@ Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
 """
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxLayout, QDoubleSpinBox, QCheckBox, QPlainTextEdit,\
-                            QDialog, QShortcut, QTabWidget, QWidget, QVBoxLayout
+                            QDialog, QShortcut, QTabWidget, QWidget, QVBoxLayout, QAction
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QObject, Qt, QTimer
 from psychopy import monitors, visual, core
 from psychopy import event as psychopy_event
@@ -195,7 +195,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
         
 
 class DelaySacFsmProcess(multiprocessing.Process):
-    def __init__(self,exp_name, fsm_to_gui_sndr, gui_to_fsm_Q, data_rcvr, stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event, mouse_enable_Event, real_time_data_Array, eye_data_Array, data_ch_1,data_ch_5,data_ch_change, main_parameter, mon_parameter):
+    def __init__(self,exp_name, fsm_to_gui_sndr, gui_to_fsm_Q, data_rcvr, stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event, mouse_enable_Event, next_trl_Event, real_time_data_Array, eye_data_Array, data_ch_1,data_ch_5,data_ch_change, main_parameter, mon_parameter):
         super().__init__()
         self.exp_name = exp_name
         self.fsm_to_gui_sndr = fsm_to_gui_sndr
@@ -210,6 +210,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.data_change_Event = data_change_Event
         self.end_trial_Event = end_trial_Event
         self.mouse_enable_Event = mouse_enable_Event
+        self.next_trl_Event = next_trl_Event
         self.mouse_mode = False
         self.dout_ch_1 = data_ch_1
         self.dout_ch_5 = data_ch_5
@@ -462,7 +463,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             delay_time = 0
                             display_cue = False
                             reward_fixation = False
-                        elif np.random.rand() > fsm_parameter['tgt_prob']:
+                        elif np.random.rand() < fsm_parameter['tgt_prob']:
                             #display_tgt = False
                             reward_fixation = True
                             
@@ -1039,6 +1040,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                     if state == 'TRIAL_SUCCESS':
                         self.window.flip() # remove all targets
                         if (self.t-state_start_time) > fsm_parameter['ITI']:
+                            self.next_trl_Event.clear()
                             self.send_data_t = self.t
                             
                             # Get trial eye data from eye process
@@ -1080,7 +1082,15 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.init_trial_data()  
                             self.trial_data['right_cal_matrix'] = cal_parameter['right_cal_matrix']
                             self.trial_data['left_cal_matrix'] = cal_parameter['left_cal_matrix']
-                            state = 'INIT'  
+                            
+                            if not fsm_parameter['manual_trials']:
+                                state = 'INIT'
+                            else:
+                                state = 'WAIT_FOR_NEXT_TRIAL'
+                    
+                    if state == 'WAIT_FOR_NEXT_TRIAL':
+                        if self.next_trl_Event.is_set():
+                            state = 'INIT'
                             
                     # Update shared real time data
                     with self.real_time_data_Array.get_lock():
@@ -1278,12 +1288,13 @@ class DelaySacFsmProcess(multiprocessing.Process):
                      'second_dir':0,
                      'pump_to_use':1,
                      'num_forced_beginning':0,
-                     'tgt_prob':1
+                     'tgt_prob':1,
+                     'manual_trials':False
                      }
         return parameter
         
 class DelaySacGui(FsmGui):
-    def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event,mouse_toggle_Event, real_time_data_Array, main_parameter):        
+    def __init__(self,exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event,mouse_toggle_Event, next_trl_Event, real_time_data_Array, main_parameter):        
         # import faulthandler
         # faulthandler.disable()
         # faulthandler.enable()
@@ -1293,12 +1304,20 @@ class DelaySacGui(FsmGui):
         self.stop_exp_Event = stop_exp_Event
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.mouse_toggle_Event = mouse_toggle_Event
+        self.next_trl_Event = next_trl_Event
         self.real_time_data_Array = real_time_data_Array
         self.exp_name = exp_name
         self.main_parameter = main_parameter
         super(DelaySacGui,self).__init__(self.stop_fsm_process_Event)      
         self.init_gui()
         self.thread_pool = QThreadPool()
+        
+        self.toolbar_next_trl_QAction = QAction(QtGui.QApplication.style().\
+            standardIcon(QtGui.QStyle.SP_MediaPlay), "Next Trial", self)
+        self.toolbar_next_trl_QAction.setToolTip("Next Trial (<b>Space</b>)")
+        self.toolbar_next_trl_QAction.setShortcut(Qt.Key_Space)
+        self.toolbar.addAction(self.toolbar_next_trl_QAction)
+        self.toolbar_next_trl_QAction.setDisabled(True)
         # Create socket for ZMQ
         try:
             context = zmq.Context()
@@ -1343,6 +1362,7 @@ class DelaySacGui(FsmGui):
         self.toolbar_connect_QAction.triggered.connect(self.toolbar_connect_QAction_triggered)
         self.toolbar_run_QAction.triggered.connect(self.toolbar_run_QAction_triggered)
         self.toolbar_stop_QAction.triggered.connect(self.toolbar_stop_QAction_triggered)
+        self.toolbar_next_trl_QAction.triggered.connect(self.toolbar_next_trl_QAction_triggered)
         # Sidepanel
         self.horz_offset_QDoubleSpinBox.valueChanged.connect(self.horz_offset_QDoubleSpinBox_valueChanged)
         self.vert_offset_QDoubleSpinBox.valueChanged.connect(self.vert_offset_QDoubleSpinBox_valueChanged)
@@ -1390,6 +1410,7 @@ class DelaySacGui(FsmGui):
         self.pump_to_use_QComboBox.currentIndexChanged.connect(self.pump_to_use_QComboBox_indexChanged)
         self.num_forced_QDoubleSpinBox.valueChanged.connect(self.num_forced_QDoubleSpinBox_valueChanged)
         self.tgt_prob_QDoubleSpinBox.valueChanged.connect(self.tgt_prob_QDoubleSpinBox_valueChanged)
+        self.manual_trial_QCheckBox.stateChanged.connect(self.manual_trial_QCheckBox_stateChanged)
         
         self.save_QPushButton.clicked.connect(self.save_QPushButton_clicked)
         
@@ -1401,6 +1422,9 @@ class DelaySacGui(FsmGui):
     def toolbar_run_QAction_triggered(self):
         # Check to see if plot process ready
         self.fsm_to_plot_priority_socket.send_pyobj(('confirm_connection',0))
+        if self.exp_parameter['manual_trials']:
+            self.toolbar_next_trl_QAction.setEnabled(True)
+        self.next_trl_Event.clear()
         # Wait for confirmation for 5 sec.
         if self.plot_to_fsm_poller.poll(5000):
             msg = self.plot_to_fsm_socket.recv_pyobj(flags=zmq.NOBLOCK)
@@ -1436,6 +1460,7 @@ class DelaySacGui(FsmGui):
     def toolbar_stop_QAction_triggered(self):
         self.toolbar_run_QAction.setEnabled(True)
         self.toolbar_stop_QAction.setDisabled(True)
+        self.toolbar_next_trl_QAction.setDisabled(True)
         # Enable some user functions
         self.sidepanel_parameter_QWidget.setEnabled(True)
         self.tgt.setEnabled(True)
@@ -1452,6 +1477,11 @@ class DelaySacGui(FsmGui):
         '''
         self.receiver_QTimer.start(10)
         self.toolbar_connect_QAction.setDisabled(True)
+        
+    @pyqtSlot()
+    def toolbar_next_trl_QAction_triggered(self):
+        if not self.next_trl_Event.is_set():
+            self.next_trl_Event.set()
         
     @pyqtSlot()
     def data_QTimer_timeout(self):
@@ -1681,6 +1711,10 @@ class DelaySacGui(FsmGui):
     @pyqtSlot()
     def tgt_prob_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['tgt_prob'] = self.tgt_prob_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def manual_trial_QCheckBox_stateChanged(self):
+        self.exp_parameter['manual_trials'] = self.manual_trial_QCheckBox.isChecked()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
         
         
@@ -2114,6 +2148,9 @@ class DelaySacGui(FsmGui):
         self.include_corr_sac_QCheckBox = QCheckBox('Include Corrective Saccades')
         self.sidepanel_params_4_tab_QVBoxLayout.addWidget(self.include_corr_sac_QCheckBox)
         
+        self.manual_trial_QCheckBox = QCheckBox('Manual Trials')
+        self.sidepanel_params_4_tab_QVBoxLayout.addWidget(self.manual_trial_QCheckBox)
+        
         self.first_cue_dir_QHBoxLayout = QHBoxLayout()
         self.first_cue_dir_QLabel = QLabel("Cue Direction:")
         self.first_cue_dir_QLabel.setAlignment(Qt.AlignRight)
@@ -2172,7 +2209,7 @@ class DelaySacGui(FsmGui):
         self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.num_forced_QHBoxLayout)
         
         self.tgt_prob_QHBoxLayout = QHBoxLayout()
-        self.tgt_prob_QLabel = QLabel("Target Display Probability:")
+        self.tgt_prob_QLabel = QLabel("Reward Fixation Probability:")
         self.tgt_prob_QLabel.setAlignment(Qt.AlignRight)
         self.tgt_prob_QHBoxLayout.addWidget(self.tgt_prob_QLabel)
         self.tgt_prob_QDoubleSpinBox = QDoubleSpinBox()
@@ -2249,7 +2286,8 @@ class DelaySacGui(FsmGui):
                          'moving_avg_samp_num':20,
                          'pump_to_use':1,
                          'num_forced_beginning':0,
-                         'tgt_prob':1
+                         'tgt_prob':1,
+                         'manual_trials':False
                          }
         return parameter
     
@@ -2302,6 +2340,7 @@ class DelaySacGui(FsmGui):
         self.center_cue_QCheckBox.setChecked(self.exp_parameter['center_cue'])
         self.keep_cue_on_QCheckBox.setChecked(self.exp_parameter['keep_cue_on'])
         self.include_corr_sac_QCheckBox.setChecked(self.exp_parameter['include_corr_sac'])
+        self.manual_trial_QCheckBox.setChecked(self.exp_parameter['manual_trials'])
         
         self.second_dir_QDoubleSpinBox.setValue(self.exp_parameter['second_dir'])
         self.mov_avg_samp_QDoubleSpinBox.setValue(self.exp_parameter['moving_avg_samp_num'])
@@ -2328,7 +2367,7 @@ class DelaySacGui(FsmGui):
 
         
 class DelaySacGuiProcess(multiprocessing.Process):
-    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event,mouse_toggle_Event, real_time_data_Array, main_parameter, parent=None):
+    def __init__(self, exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event,mouse_toggle_Event, next_trl_Event, real_time_data_Array, main_parameter, parent=None):
         super(DelaySacGuiProcess,self).__init__(parent)
         self.exp_name = exp_name
         self.fsm_to_gui_rcvr = fsm_to_gui_rcvr
@@ -2337,10 +2376,11 @@ class DelaySacGuiProcess(multiprocessing.Process):
         self.real_time_data_Array = real_time_data_Array
         self.stop_fsm_process_Event = stop_fsm_process_Event
         self.mouse_toggle_Event = mouse_toggle_Event
+        self.next_trl_Event = next_trl_Event
         self.main_parameter = main_parameter
     def run(self):  
         app = QApplication(sys.argv)
-        app_gui = DelaySacGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event,self.mouse_toggle_Event, self.real_time_data_Array, self.main_parameter)
+        app_gui = DelaySacGui(self.exp_name, self.fsm_to_gui_rcvr, self.gui_to_fsm_sndr, self.stop_exp_Event, self.stop_fsm_process_Event,self.mouse_toggle_Event, self.next_trl_Event,self.real_time_data_Array, self.main_parameter)
         app_gui.setWindowIcon(QtGui.QIcon(os.path.join('.', 'icon', 'experiment_window.png')))
         app_gui.show()
         sys.exit(app.exec())

@@ -376,6 +376,7 @@ class MainGui(QMainWindow):
         mouse_toggle_Event = multiprocessing.Event()
         #no_tracker_Event = multiprocessing.Event()
         mouse_toggle_Event.clear()
+        next_trl_Event = multiprocessing.Event()
         
         data_ch_1 = multiprocessing.Value('i',1)
         data_ch_5 = multiprocessing.Value('i',1)
@@ -389,11 +390,11 @@ class MainGui(QMainWindow):
        	real_time_data_Array = multiprocessing.Array('d', range(5))
        	eye_data_Array = multiprocessing.Array('d',range(5))
        	exp_name='delay_saccade'
-        fsm_process = DelaySacFsmProcess(exp_name,fsm_to_gui_sndr, gui_to_fsm_rcvr, data_rcvr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,mouse_toggle_Event,real_time_data_Array,eye_data_Array, data_ch_1,data_ch_5,data_ch_change, self.main_parameter,self.mon_parameter)
+        fsm_process = DelaySacFsmProcess(exp_name,fsm_to_gui_sndr, gui_to_fsm_rcvr, data_rcvr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,mouse_toggle_Event,next_trl_Event,real_time_data_Array,eye_data_Array, data_ch_1,data_ch_5,data_ch_change, self.main_parameter,self.mon_parameter)
         
         eye_process = DelaySacEyeProcess(exp_name,data_sndr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,eye_data_Array, data_ch_1,data_ch_5,data_ch_change,self.main_parameter,self.mon_parameter)
         
-        gui_process = DelaySacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, mouse_toggle_Event, real_time_data_Array, self.main_parameter)
+        gui_process = DelaySacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, mouse_toggle_Event,next_trl_Event, real_time_data_Array, self.main_parameter)
         
         eye_process.start()
         time.sleep(0.25)
