@@ -228,8 +228,10 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.t = math.nan
         #self.pull_data_t = 0 # keep track of when data was pulled last from VPixx
         self.eye_blink = True;
-        self.num_choice = 0
-        self.num_correct = 0
+        #num_choice = 0
+        #num_correct = 0
+        #num_choice_no_cue = 0
+        #num_correct_no_cue = 0
     
     def run(self):
         # import faulthandler
@@ -304,6 +306,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 random_signal_t = self.t
                 trial_num = 1
                 self.num_false_start = 0
+                self.num_delay = 0
+                num_choice = 0
+                num_choice_no_cue = 0
+                num_correct = 0
+                num_correct_no_cue = 0
                 pump_to_use = fsm_parameter['pump_to_use']
                 print(f'PUMP_TO_USE: {pump_to_use}')
                 vel_samp_num = 3
@@ -326,6 +333,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 eye_y_data = deque(maxlen=vel_samp_num)
                 self.moving_avg_acc = deque(maxlen=moving_avg_samp_num)
                 self.moving_avg_fs = deque(maxlen=moving_avg_samp_num)
+                self.move_avg_no_cue = deque(maxlen=moving_avg_samp_num)
                 eye_pos = [0,0]
                 eye_vel = [0,0]
                 eye_speed = 0.0
@@ -363,8 +371,10 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         run_exp = False
                         self.window.flip()
                         self.t = math.nan
-                        self.num_choice = 0
-                        self.num_correct = 0
+                        num_choice = 0
+                        num_correct = 0
+                        num_choice_no_cue = 0
+                        num_correct_no_cue = 0
                         break
                     # Send random signal for alignment
                     self.write_Dout(0,0)
@@ -455,9 +465,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         # Pick a random delay time
                         
                         cue_duration = fsm_parameter['cue_duration']
+                        pre_cue_duration = fsm_parameter['mask_duration']
                         display_cue = True
                         display_tgt = True
                         reward_fixation = False
+                        '''
                         if np.random.rand() > fsm_parameter['cue_probability']:
                             cue_duration = 0
                             delay_time = 0
@@ -466,19 +478,44 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         elif np.random.rand() < fsm_parameter['tgt_prob']:
                             #display_tgt = False
                             reward_fixation = True
+                        '''
+                        
+                        keep_cue_on = False
+                        if np.random.rand() < fsm_parameter['keep_cue_on']:
+                            keep_cue_on = True
+                        
+                        if np.random.rand() < fsm_parameter['tgt_prob']:
+                            reward_fixation = True
+                        elif np.random.rand() > fsm_parameter['cue_probability']:
+                            cue_duration = 0
+                            pre_cue_duration = 0
+                            keep_cue_on = True
+                            
+                        if cue_duration > 1e-3:
+                            self.num_delay += 1
                             
                             
                         self.trial_data['display_cue'].append(int(display_cue))
                         self.trial_data['display_tgt'].append(int(display_tgt))
                         
                         
-                        # Choose set of targets to display
+                        '''
                         if np.random.rand() < fsm_parameter['choice_prob'] and (dir_switch_interval == 0 or (trial_num % dir_switch_interval) > fsm_parameter['num_forced_beginning']):
                             num_tgt_display = max(fsm_parameter['num_tgt_display'] - 1,0)
-                            self.num_choice += 1
+                            if not reward_fixation:
+                                self.num_choice += 1
                         else:
                             num_tgt_display = 0
-                            
+                        '''
+                        num_tgt_display = 0
+                        if np.random.rand() < fsm_parameter['choice_prob'] or reward_fixation:
+                            num_tgt_display = max(fsm_parameter['num_tgt_display'] - 1,0)
+                            '''if not reward_fixation:
+                                if keep_cue_on:
+                                    self.num_choice += 1
+                                else:
+                                    self.num_choice_no_cue += 1
+                            '''
                         
                         tgt_display_list = []
                         
@@ -535,6 +572,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         self.trial_data['cue_orientation'].append(ori)
                         wrong_tgt_bool = False
                         wrong_tgt_indicator = False
+                        inc_sac_indicator = False
                         
                         if fsm_parameter['center_cue']:
                             self.cue.pos = (self.start_x, self.start_y)
@@ -550,13 +588,6 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             cue_idx = random.randint(0,len(cue_pos_list)-1)
                             self.cue.pos = cue_pos_list[cue_idx]
                             
-                        keep_cue_on = False
-                        if fsm_parameter['keep_cue_on']:
-                            cue_on_prob = 1
-                            if np.random.rand() < cue_on_prob:
-                                keep_cue_on = True
-                            else:
-                                keep_cue_on = False
                                
                         false_start_bool = False
                         
@@ -630,11 +661,16 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
                             #self.tgt_x = self.cue_x
                             #self.tgt_y = self.cue_y
+                            
+                            if pre_cue_duration > 1e-3:
+                                state = 'DISPLAY_TGT'
+                                print('state = DISPLAY_TGT')
                                  
-                            if display_cue and (keep_cue_on or cue_duration > 1e-3):
+                            elif display_cue and (keep_cue_on or cue_duration > 1e-3):
                                 self.trial_data['state_start_t_cue_display'].append(self.t)
                                 state = 'DISPLAY_CUE'
                                 print('state = DISPLAY_CUE')
+                                
                             else:
                                 self.trial_data['state_start_t_delay_fixation'].append(self.t)
                                 state = 'DELAY_FIXATION'
@@ -648,7 +684,58 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.pd_tgt.draw()
                             self.write_Dout(0,0)
                             self.window.flip()
-                            state = 'STR_TARGET_PURSUIT'  
+                            state = 'STR_TARGET_PURSUIT'
+                            
+                    if state == 'DISPLAY_TGT':
+                        if not self.eye_blink:
+                            self.fix_tgt.draw()
+                           
+                            if display_tgt:
+                                for counter_tgt in range(len(tgt_display_coords)):
+                                    distractor_pos = tgt_display_coords[counter_tgt]
+                                    self.tgt.pos = (distractor_pos[0], distractor_pos[1])
+                                    #self.tgt.draw()
+                                    self.draw_tgt(cue_type)
+                                
+                            self.tgt_x = self.cue_x
+                            self.tgt_y = self.cue_y
+                            self.tgt.pos = (self.tgt_x,self.tgt_y)
+                            if fsm_parameter['num_tgt_display'] > 0 and display_tgt:             
+                                #self.tgt.draw()
+                                self.draw_tgt(cue_type)
+                                    
+                            self.pd_tgt.draw()
+                            self.write_Dout(0,0)
+                            self.window.flip()
+
+                            state_start_time = self.t
+                            state_inter_time = self.t
+                            #self.trial_data['state_start_t_cue_fixation'].append(self.t)
+                            state = 'WAIT_FOR_CUE'
+                            print('state = WAIT_FOR_CUE')
+                            
+                    if state == 'WAIT_FOR_CUE':
+                        eye_dist_from_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
+                        if eye_dist_from_tgt > fsm_parameter['rew_area']/2 or self.eye_blink:
+                            state_start_time = self.t
+                            state_inter_time = self.t
+                            state = 'INCORRECT_SACCADE'
+                            
+                            if not wrong_tgt_bool:
+                                false_start_bool = True
+                            #print('state = STR_TARGET_PURSUIT, broke fixation')
+                            print(f'state = INCORRECT_SACCADE, broke fixation, false_start_bool  = {false_start_bool}')
+                            self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
+                            
+                            self.pd_tgt.draw()
+                            self.window.flip()
+                            
+                        if (self.t-state_inter_time) >= pre_cue_duration:
+                            state_start_time = self.t
+                            state_inter_time = self.t
+                            self.trial_data['state_start_t_cue_display'].append(self.t)
+                            state = 'DISPLAY_CUE'
+                            print('state = DISPLAY_CUE')  
                             
                     if state == 'DISPLAY_CUE': # Display all targets and cue simultaneously
                         if not self.eye_blink:
@@ -687,7 +774,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             state = 'INCORRECT_SACCADE'
-                            false_start_bool = True
+                            
+                            if not wrong_tgt_bool:
+                                false_start_bool = True
                             #print('state = STR_TARGET_PURSUIT, broke fixation')
                             print('state = INCORRECT_SACCADE, broke fixation')
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
@@ -695,7 +784,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.pd_tgt.draw()
                             self.window.flip()
                             
-                        if (self.t-state_inter_time) >= fsm_parameter['cue_duration']:
+                        if (self.t-state_inter_time) >= cue_duration:
                             state_start_time = self.t
                             state_inter_time = self.t
                             
@@ -790,7 +879,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
                             
                             lib.playSound(1000,0.1) # Neutral beep
-                            if display_tgt:
+                            if display_tgt or not display_tgt:
                                 for counter_tgt in range(len(tgt_display_coords)):
                                     distractor_pos = tgt_display_coords[counter_tgt]
                                     self.tgt.pos = (distractor_pos[0], distractor_pos[1])
@@ -800,7 +889,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.tgt_x = self.cue_x
                             self.tgt_y = self.cue_y
                             self.tgt.pos = (self.tgt_x,self.tgt_y)
-                            if fsm_parameter['num_tgt_display'] > 0 and display_tgt:             
+                            if fsm_parameter['num_tgt_display'] > 0 and (display_tgt or not display_tgt) :             
                                 #self.tgt.draw()
                                 self.draw_tgt(cue_type)
                                     
@@ -836,6 +925,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                             self.write_Dout(1,1)
                             self.window.flip()
+                            #wrong_tgt_indicator = True
                             print('state = INCORRECT_SACCADE')
                             state = 'INCORRECT_SACCADE'                         
                         # If time runs out before saccade detected, play punishment sound and reset the trial
@@ -899,6 +989,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 state_start_time = self.t
                                 state_inter_time = self.t
                                 
+                                                                                                                                                                                                                                                                                                          
+                                wrong_tgt_indicator = True
                                 wrong_tgt_bool = False
                                 for counter_tgt in range(len(tgt_display_coords)):
                                     distractor_pos = tgt_display_coords[counter_tgt]
@@ -1020,6 +1112,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if ((self.t - state_start_time) > fsm_parameter['pun_time']):
                             state_start_time = self.t
                             state_inter_time = self.t
+                            if not wrong_tgt_indicator:
+                                inc_sac_indicator = True
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             self.pd_tgt.draw()
                             self.write_Dout(0,0)
@@ -1054,29 +1148,70 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                     current_dir = 0
                                 print(f'current_dir_after: {current_dir}')
                                 self.moving_avg_acc = deque(maxlen=moving_avg_samp_num)
-                                self.num_correct = 0
-                                self.num_choice = 0
+                                self.move_avg_no_cue = deque(maxlen=moving_avg_samp_num)
+                                num_correct = 0
+                                num_choice = 0
                                 self.fsm_to_gui_sndr.send(('log','Switched Target Direction to '+str(current_dir)))
                                 
-                            if false_start_bool:
-                                self.num_false_start += 1
-                                self.moving_avg_fs.append(1)
-                            else:
-                                self.moving_avg_fs.append(0)
+                            if cue_duration > 1e-3:
+                                if false_start_bool:
+                                    self.num_false_start += 1
+                                    self.moving_avg_fs.append(1)
+                                else:
+                                    self.moving_avg_fs.append(0)
                                 
-                            self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed. Successful Delay Rate: ' +str(trial_num - self.num_false_start)+'/'+str(trial_num)+' ('+str(int(100*(1-self.num_false_start/trial_num)))+'%), Moving Avg: '+str(int(100*(1-np.mean(np.array(self.moving_avg_fs)))))+'%'))
                             
                             # Send trial data to GUI
-                            if num_tgt_display > 0:
-                                if not wrong_tgt_indicator:
-                                    self.num_correct += 1
-                                    self.moving_avg_acc.append(1)
+                            if inc_sac_indicator and wrong_tgt_indicator and not reward_fixation and num_tgt_display > 0:
+                                if keep_cue_on:
+                                    num_choice += 1
                                 else:
-                                    self.moving_avg_acc.append(0)
+                                    num_choice_no_cue += 1
+                                     
+                            if num_tgt_display > 0 and not reward_fixation and not inc_sac_indicator:
+                                if keep_cue_on:
+                                    num_choice += 1
+                                else:
+                                    num_choice_no_cue += 1
+                                        
+                                if not wrong_tgt_indicator:
+                                    if keep_cue_on:
+                                        num_correct += 1
+                                        self.moving_avg_acc.append(1)
+                                    else:
+                                        num_correct_no_cue += 1
+                                        self.move_avg_no_cue.append(1)
+                                else:
+                                    if keep_cue_on:
+                                        self.moving_avg_acc.append(0)
+                                    else:
+                                        self.move_avg_no_cue.append(0)
+                                        
+                                if cue_duration > 1e-3 and num_choice > 0 and num_choice_no_cue > 0:       
+                                    #self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Delay Success: ' +str(self.num_delay - self.num_false_start)+'/'+str(self.num_delay)+' ('+str(int(100*(1-self.num_false_start/self.num_delay)))+'%), Move Avg: '+str(int(100*(1-np.mean(np.array(self.moving_avg_fs)))))+'%; Choice Accuracy: '+ str(self.num_correct)+'/'+str(self.num_choice)+' ('+str(int(100*self.num_correct/self.num_choice))+'%), Move Avg: '+str(int(100*np.mean(np.array(self.moving_avg_acc))))+'%'))
+                                    self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Delay Success: ' +str(self.num_delay - self.num_false_start)+'/'+str(self.num_delay)+' ('+str(int(100*(1-self.num_false_start/self.num_delay)))+'%), Cue Choice Accuracy: ' + str(num_correct)+'/'+str(num_choice)+' ('+str(int(100*num_correct/num_choice))+'%), No Cue Choice: ' + str(num_correct_no_cue)+'/'+str(num_choice_no_cue)+' ('+str(int(100*num_correct_no_cue/num_choice_no_cue))+'%)'))
+                                    
+                                elif cue_duration > 1e-3 and num_choice > 0:
+                                    self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Delay Success: ' +str(self.num_delay - self.num_false_start)+'/'+str(self.num_delay)+' ('+str(int(100*(1-self.num_false_start/self.num_delay)))+'%), Cue Choice Accuracy: ' + str(num_correct)+'/'+str(num_choice)+' ('+str(int(100*num_correct/num_choice))+'%)'))
+                                elif cue_duration > 1e-3 and num_choice_no_cue > 0:
+                                    self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Delay Success: ' +str(self.num_delay - self.num_false_start)+'/'+str(self.num_delay)+' ('+str(int(100*(1-self.num_false_start/self.num_delay)))+'%), No Cue Choice: ' + str(num_correct_no_cue)+'/'+str(num_choice_no_cue)+' ('+str(int(100*num_correct_no_cue/num_choice_no_cue))+'%)'))
+   
+                                else:
+                                    if num_choice > 0 and num_choice_no_cue > 0:
+                                        self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Choice Accuracy: '+ str(num_correct)+'/'+str(num_choice)+' ('+str(int(100*num_correct/num_choice))+'%), No Cue Choice: ' + str(num_correct_no_cue)+'/'+str(num_choice_no_cue)+' ('+str(int(100*num_correct_no_cue/num_choice_no_cue))+'%)'))
+                                    elif num_choice > 0:
+                                        self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Choice Accuracy: '+ str(num_correct)+'/'+str(num_choice)+' ('+str(int(100*num_correct/num_choice))+'%)'))
+                                    else:
+                                        self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' No Cue Choice: ' + str(num_correct_no_cue)+'/'+str(num_choice_no_cue)+' ('+str(int(100*num_correct_no_cue/num_choice_no_cue))+'%)'))
                                     
                                #self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed. ' +str(self.num_correct)+'/'+str(self.num_choice)+' ('+str(int(100*self.num_correct/self.num_choice))+'%), Moving Avg: '+str(int(100*np.mean(np.array(self.moving_avg_acc))))+'%'))
-                            #else:
-                                #self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed.'))
+                            elif num_tgt_display > 0 and cue_duration > 1e-3:
+                                self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Delay Success: ' +str(self.num_delay - self.num_false_start)+'/'+str(self.num_delay)+' ('+str(int(100*(1-self.num_false_start/self.num_delay)))+'%), Move Avg: '+str(int(100*(1-np.mean(np.array(self.moving_avg_fs)))))+'%'))
+                                
+                            else:
+                                self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num)))
+                                
+                                
                             #self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             trial_num += 1
                             self.init_trial_data()  
@@ -1281,7 +1416,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                      'first_cue_dir':90,
                      'num_cue_dir':1,
                      'center_cue':True,
-                     'keep_cue_on':False,
+                     'keep_cue_on':0.0,
                      'include_corr_sac':True,
                      'dir_switch_interval':20,
                      'moving_avg_samp_num':10,
@@ -1401,7 +1536,7 @@ class DelaySacGui(FsmGui):
         self.fixed_cue_pos_QCheckBox.stateChanged.connect(self.fixed_cue_pos_QCheckBox_stateChanged)
         self.first_cue_dir_QDoubleSpinBox.valueChanged.connect(self.first_cue_dir_QDoubleSpinBox_valueChanged)
         self.num_cue_dir_QDoubleSpinBox.valueChanged.connect(self.num_cue_dir_QDoubleSpinBox_valueChanged)
-        self.keep_cue_on_QCheckBox.stateChanged.connect(self.keep_cue_on_QCheckBox_stateChanged)
+        self.keep_cue_on_QDoubleSpinBox.valueChanged.connect(self.keep_cue_on_QDoubleSpinBox_valueChanged)
         self.include_corr_sac_QCheckBox.stateChanged.connect(self.include_corr_sac_QCheckBox_stateChanged)
         
         self.second_dir_QDoubleSpinBox.valueChanged.connect(self.second_dir_QDoubleSpinBox_valueChanged)
@@ -1684,8 +1819,8 @@ class DelaySacGui(FsmGui):
         self.exp_parameter['num_cue_dir'] = self.num_cue_dir_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
-    def keep_cue_on_QCheckBox_stateChanged(self):
-        self.exp_parameter['keep_cue_on'] = self.keep_cue_on_QCheckBox.isChecked()
+    def keep_cue_on_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['keep_cue_on'] = self.keep_cue_on_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def include_corr_sac_QCheckBox_stateChanged(self):
@@ -2032,7 +2167,7 @@ class DelaySacGui(FsmGui):
         self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.cue_duration_QHBoxLayout)
         
         self.mask_duration_QHBoxLayout = QHBoxLayout()
-        self.mask_duration_QLabel = QLabel("Mask Duration (s):")
+        self.mask_duration_QLabel = QLabel("Pre-Cue Duration (s):")
         self.mask_duration_QLabel.setAlignment(Qt.AlignRight)
         self.mask_duration_QHBoxLayout.addWidget(self.mask_duration_QLabel)
         self.mask_duration_QDoubleSpinBox = QDoubleSpinBox()
@@ -2142,8 +2277,17 @@ class DelaySacGui(FsmGui):
         self.center_cue_QCheckBox = QCheckBox('Cue at Center Fixation')
         self.sidepanel_params_4_tab_QVBoxLayout.addWidget(self.center_cue_QCheckBox)
         
-        self.keep_cue_on_QCheckBox = QCheckBox('Keep Cue On')
-        self.sidepanel_params_4_tab_QVBoxLayout.addWidget(self.keep_cue_on_QCheckBox)
+        self.keep_cue_on_QHBoxLayout = QHBoxLayout()
+        self.keep_cue_on_QLabel = QLabel("Keep Cue On Probability:")
+        self.keep_cue_on_QLabel.setAlignment(Qt.AlignRight)
+        self.keep_cue_on_QHBoxLayout.addWidget(self.keep_cue_on_QLabel)
+        self.keep_cue_on_QDoubleSpinBox = QDoubleSpinBox()
+        self.keep_cue_on_QDoubleSpinBox.setValue(0)
+        self.keep_cue_on_QDoubleSpinBox.setMaximum(1)
+        self.keep_cue_on_QDoubleSpinBox.setSingleStep(0.01)
+        self.keep_cue_on_QDoubleSpinBox.setDecimals(2)
+        self.keep_cue_on_QHBoxLayout.addWidget(self.keep_cue_on_QDoubleSpinBox)
+        self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.keep_cue_on_QHBoxLayout)
         
         self.include_corr_sac_QCheckBox = QCheckBox('Include Corrective Saccades')
         self.sidepanel_params_4_tab_QVBoxLayout.addWidget(self.include_corr_sac_QCheckBox)
@@ -2279,7 +2423,7 @@ class DelaySacGui(FsmGui):
                          'first_cue_dir':90,
                          'num_cue_dir':1,
                          'center_cue':False,
-                         'keep_cue_on':False,
+                         'keep_cue_on':0.0,
                          'include_corr_sac':True,
                          'second_dir':0,
                          'dir_switch_interval':20,
@@ -2338,7 +2482,7 @@ class DelaySacGui(FsmGui):
         self.first_cue_dir_QDoubleSpinBox.setValue(self.exp_parameter['first_cue_dir'])
         self.num_cue_dir_QDoubleSpinBox.setValue(self.exp_parameter['num_cue_dir'])
         self.center_cue_QCheckBox.setChecked(self.exp_parameter['center_cue'])
-        self.keep_cue_on_QCheckBox.setChecked(self.exp_parameter['keep_cue_on'])
+        self.keep_cue_on_QDoubleSpinBox.setValue(self.exp_parameter['keep_cue_on'])
         self.include_corr_sac_QCheckBox.setChecked(self.exp_parameter['include_corr_sac'])
         self.manual_trial_QCheckBox.setChecked(self.exp_parameter['manual_trials'])
         
