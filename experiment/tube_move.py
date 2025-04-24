@@ -9,6 +9,8 @@ import os
 import sys
 from functools import partial
 import random
+import time
+
 
 import zmq
 from PyQt5 import QtGui
@@ -29,6 +31,7 @@ from pypixxlib._libdpx import (  # NoQA
     DPxClose,
     TPxReadTPxData,
     TPxSetupTPxSchedule,
+    DPxGetDinValue
 )
 
 import app_lib as lib
@@ -111,6 +114,7 @@ class TubeMoveFsmProcess(multiprocessing.Process):
         run_exp = False
         random_signal_t = math.nan
         bit_mask = 1 << 8 | 1 << 10
+        touch_countdown_period = False
         # Process loop
         while not self.stop_fsm_process_event.is_set():
             if not self.stop_exp_event.is_set():
@@ -140,6 +144,31 @@ class TubeMoveFsmProcess(multiprocessing.Process):
             elif self.tube_move_right_Event.is_set():
                 DPxSetDoutValue(1 << 10, bit_mask)
             DPxUpdateRegCache()
+            
+            din_value = bin(DPxGetDinValue())
+            touch_detected = din_value[13] == '0'
+            
+            if touch_detected and not touch_countdown_period:
+                touch_countdown_period = True
+                tube_moved = False
+                countdown_start = time.time()
+            
+            if touch_countdown_period:
+                if time.time() - countdown_start > 0.5 and not tube_moved:
+                    tube_moved = True
+                    if random.random() <= 0.5:
+                        self.tube_move_right_Event.clear()
+                        self.tube_move_center_Event.clear()
+                        self.tube_move_left_Event.set()
+                    else:
+                        self.tube_move_left_Event.clear()
+                        self.tube_move_center_Event.clear()
+                        self.tube_move_right_Event.set()
+                if tube_moved and time.time() - countdown_start > 3:
+                    touch_countdown_period = False
+                    self.tube_move_right_Event.clear()
+                    self.tube_move_left_Event.clear()
+                    self.tube_move_center_Event.set()
 
             # Trial loop
             while not self.stop_fsm_process_event.is_set() and run_exp:
