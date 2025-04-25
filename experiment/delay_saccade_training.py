@@ -727,8 +727,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             
                                 if keep_cue_on:
                                     self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
-                                    #if fsm_parameter['center_cue']:
-                                    #    self.tgt.draw()
+                                    cue_on = True
+                                else:
+                                    cue_on = False
                             
                                 lib.playSound(1000,0.1) # Neutral beep
                                 if display_tgt:
@@ -770,6 +771,20 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         print('state = DETECT_SACCADE_START')
                         
                     if state == 'DETECT_SACCADE_START':
+                        if (self.t - state_start_time) >= fsm_parameter['post_delay'] and cue_on: # Getting rid of cue after post delay
+                            cue_on = False
+                            if display_tgt:
+                                for counter_tgt in range(len(tgt_display_coords)):
+                                    distractor_pos = tgt_display_coords[counter_tgt]
+                                    self.tgt.pos = (distractor_pos[0], distractor_pos[1])
+                                    self.draw_tgt(cue_type)
+                                
+                            self.tgt_x = self.cue_x
+                            self.tgt_y = self.cue_y
+                            self.tgt.pos = (self.tgt_x,self.tgt_y)
+                            if fsm_parameter['num_tgt_display'] > 0 and display_tgt:             
+                                self.draw_tgt(cue_type)
+                            
                         eye_dist_from_start_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
                         #print(f'Dist: {eye_dist_from_tgt}, Speed: {self.eye_speed}')
                         if self.eye_speed >= fsm_parameter['sac_detect_threshold']:         
@@ -1222,7 +1237,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                      'second_dir':0,
                      'pump_to_use':1,
                      'num_forced_beginning':0,
-                     'tgt_prob':1
+                     'tgt_prob':1,
+                     'post_delay':0
                      }
         return parameter
         
@@ -1312,6 +1328,7 @@ class DelaySacGui(FsmGui):
         
         self.cue_duration_QDoubleSpinBox.valueChanged.connect(self.cue_duration_QDoubleSpinBox_valueChanged)
         self.mask_duration_QDoubleSpinBox.valueChanged.connect(self.mask_duration_QDoubleSpinBox_valueChanged)
+        self.post_delay_QDoubleSpinBox.valueChanged.connect(self.post_delay_QDoubleSpinBox_valueChanged)
         self.cue_probability_QDoubleSpinBox.valueChanged.connect(self.cue_probability_QDoubleSpinBox_valueChanged)
         self.min_delay_QDoubleSpinBox.valueChanged.connect(self.min_delay_QDoubleSpinBox_valueChanged)
         self.max_delay_QDoubleSpinBox.valueChanged.connect(self.max_delay_QDoubleSpinBox_valueChanged)
@@ -1537,6 +1554,10 @@ class DelaySacGui(FsmGui):
     @pyqtSlot()
     def max_delay_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['max_delay'] = self.max_delay_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def post_delay_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['post_delay'] = self.post_delay_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def cue_type_QComboBox_indexChanged(self):
@@ -1987,7 +2008,19 @@ class DelaySacGui(FsmGui):
         self.max_delay_QDoubleSpinBox.setSingleStep(0.01)
         self.max_delay_QDoubleSpinBox.setDecimals(2)
         self.max_delay_QHBoxLayout.addWidget(self.max_delay_QDoubleSpinBox)
-        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.max_delay_QHBoxLayout)
+        #self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.max_delay_QHBoxLayout)
+        
+        self.post_delay_QHBoxLayout = QHBoxLayout()
+        self.post_delay_QLabel = QLabel("Post Delay (s):")
+        self.post_delay_QLabel.setAlignment(Qt.AlignRight)
+        self.post_delay_QHBoxLayout.addWidget(self.post_delay_QLabel)
+        self.post_delay_QDoubleSpinBox = QDoubleSpinBox()
+        self.post_delay_QDoubleSpinBox.setValue(0)
+        self.post_delay_QDoubleSpinBox.setMaximum(5)
+        self.post_delay_QDoubleSpinBox.setSingleStep(0.01)
+        self.post_delay_QDoubleSpinBox.setDecimals(2)
+        self.post_delay_QHBoxLayout.addWidget(self.post_delay_QDoubleSpinBox)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.post_delay_QHBoxLayout)
         
         self.cue_type_QHBoxLayout = QHBoxLayout()
         self.cue_type_QLabel = QLabel("Cue Type:")
@@ -2193,7 +2226,8 @@ class DelaySacGui(FsmGui):
                          'moving_avg_samp_num':20,
                          'pump_to_use':1,
                          'num_forced_beginning':0,
-                         'tgt_prob':1
+                         'tgt_prob':1,
+                         'post_delay':0
                          }
         return parameter
     
@@ -2229,6 +2263,7 @@ class DelaySacGui(FsmGui):
         self.cue_type_QComboBox.setCurrentIndex(cue_types.index(self.exp_parameter['cue_type']))
         self.min_delay_QDoubleSpinBox.setValue(self.exp_parameter['min_delay'])
         self.max_delay_QDoubleSpinBox.setValue(self.exp_parameter['max_delay'])
+        self.post_delay_QDoubleSpinBox.setValue(self.exp_parameter['post_delay'])
         self.num_tgt_display_QDoubleSpinBox.setValue(self.exp_parameter['num_tgt_display'])
         self.random_tgt_QCheckBox.setChecked(self.exp_parameter['randomize_targets'])
         self.ambiguity_prob_QDoubleSpinBox.setValue(self.exp_parameter['ambiguity_prob'])

@@ -316,6 +316,7 @@
             "cue_probability": 0.25,
             "min_delay": 0.0,
             "max_delay": 0.0,
+            "post_delay":0.0,
             "cue_type": "circle",
             "num_tgt_display": 4,
             "randomize_targets": false,
