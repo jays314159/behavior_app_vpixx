@@ -1581,6 +1581,7 @@ class DelaySacGui(FsmGui):
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def choice_prob_QDoubleSpinBox_valueChanged(self):
+        print("Changed choice")
         self.exp_parameter['choice_prob'] = self.choice_prob_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
         

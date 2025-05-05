@@ -179,8 +179,6 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 
             if self.data_ch_change.is_set():
                 with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
-                    if not self.dout_ch_1.value + self.dout_ch_5.value == 0:
-                        print(f'wrote dout: ({self.dout_ch_1.value},{self.dout_ch_5.value})')
                     DPxSetDoutValue(self.dout_ch_1.value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5.value, bitMask)
                     DPxUpdateRegCache()
                 self.data_ch_change.clear()
@@ -303,7 +301,6 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 num_tgt_pos = len(target_pos_list)
                 num_corr_pos = len(corr_pos_list)
                 display_pos_list = lib.make_display_target(fsm_parameter)
-                pos_display_ratio = int(len(display_pos_list)/num_tgt_pos)
                 
                 #fsm_parameter['max_wait_for_corrective'] = 0.5 # Add a menu option for this
                 fsm_parameter['max_wait_for_corrective'] = fsm_parameter['max_wait_for_fixation']
@@ -537,10 +534,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                     self.num_choice_no_cue += 1
                             '''
                         
+                        tgt_display_list = []
                         self.rm_inds = []
                         
-                        tgt_display_list = []
-                        print(f'tgt_idx: {tgt_idx*pos_display_ratio}')
                         if fsm_parameter['randomize_targets']:
                             tgt_choices = list(np.arange(0,num_tgt_pos))
                             tgt_choices.remove(tgt_idx)
@@ -551,17 +547,16 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                
                         else:
                             for counter_tgt in range(tgt_step_size,num_tgt_display+1,tgt_step_size):
-                                curr_idx = (tgt_idx*pos_display_ratio + counter_tgt) % (num_tgt_display + 1)
+                                if dir_switch_interval > 0:
+                                    curr_idx = (tgt_idx + counter_tgt) % (num_tgt_display+1)
+                                else:
+                                    curr_idx = (tgt_indx_dict[tgt_idx] + counter_tgt) % (num_tgt_display+1)
                                 tgt_display_list.append(curr_idx)
-                                print(f'counter: {counter_tgt}, curr_idx: {curr_idx}')
                         
                                 
                         tgt_display_byte = 0    
                         tgt_display_coords = []
-                        #print(f'num_tgt_display: {num_tgt_display}, len display pos list: {len(display_pos_list)}, len tgt_display: {len(tgt_display_list)}')
                         for counter_tgt in range(num_tgt_display):
-                            dpl = display_pos_list[tgt_display_list[counter_tgt]]['prim_tgt_pos']
-                            #print(f'counter: {counter_tgt}, display_list: {tgt_display_list[counter_tgt]}, pos: {dpl}')
                             curr_pos = np.array(display_pos_list[tgt_display_list[counter_tgt]]['prim_tgt_pos']) + np.array(start_pos)
                             
                             tgt_display_coords.append(curr_pos)
@@ -1473,7 +1468,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
         
         
         
-    def set_default_parameter(self): 
+    def set_default_parameter(self):
         parameter = {
                      'horz_offset':0.0,
                      'vert_offset':0.0,
