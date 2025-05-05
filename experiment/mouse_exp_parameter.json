@@ -331,7 +331,7 @@
             "second_dir": 180.0,
             "dir_switch_interval": 0.0,
             "moving_avg_samp_num": 25.0,
-            "pump_to_use": 2,
+            "pump_to_use": 1,
             "num_forced_beginning": 0.0,
             "tgt_prob": 0.0,
             "change_tgt": 0.5,

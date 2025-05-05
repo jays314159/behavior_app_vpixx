@@ -45,6 +45,8 @@ class DelaySacEyeProcess(multiprocessing.Process):
         self.dout_ch_1 = data_ch_1
         self.dout_ch_5 = data_ch_5
         self.data_ch_change = data_ch_change
+        self.dout_ch_1_value = 0
+        self.dout_ch_5_value = 0
         
         self.mouse_mode = False
         #self.no_tracker = False
@@ -111,6 +113,8 @@ class DelaySacEyeProcess(multiprocessing.Process):
                     dout_ch_3 = 1 
                 else:
                     dout_ch_3 = 0
+                DPxSetDoutValue(self.dout_ch_1_value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5_value, bitMask)
+                DPxUpdateRegCache()
                     
             self.t = TPxBestPolyGetEyePosition(cal_data, raw_data)
                
@@ -179,9 +183,9 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 
             if self.data_ch_change.is_set():
                 with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
-                    if not self.dout_ch_1.value + self.dout_ch_5.value == 0:
-                        print(f'wrote dout: ({self.dout_ch_1.value},{self.dout_ch_5.value})')
-                    DPxSetDoutValue(self.dout_ch_1.value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5.value, bitMask)
+                    self.dout_ch_1_value = self.dout_ch_1.value
+                    self.dout_ch_5_value = self.dout_ch_5.value
+                    DPxSetDoutValue(self.dout_ch_1_value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5_value, bitMask)
                     DPxUpdateRegCache()
                 self.data_ch_change.clear()
                          
@@ -384,9 +388,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         num_correct = 0
                         num_choice_no_cue = 0
                         num_correct_no_cue = 0
-                        break
-                    # Send random signal for alignment
-                    self.write_Dout(0,0)
+                        breakTongue
                 
                     if self.mouse_mode:
                         t = time.time()
@@ -813,7 +815,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             print('state = INCORRECT_SACCADE, broke fixation')
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                             
-                            self.pd_tgt.draw()
+                            #self.pd_tgt.draw()
+                            self.write_Dout(1,1)
                             self.window.flip()
                             
                         if (self.t-state_inter_time) >= cue_duration:
@@ -878,7 +881,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             print('state = INCORRECT_SACCADE, broke fixation')
                             self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                             
-                            self.pd_tgt.draw()
+                            self.write_Dout(1,1)
                             self.window.flip()
                             
                         if (self.t-state_inter_time) >= delay_time:
@@ -976,6 +979,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             print('state = INCORRECT SACCADE, not fast enough')
                             self.write_Dout(1,1)
                             '''
+                            self.pd_tgt.draw()
                             self.window.flip()
                                 
                                 
@@ -984,6 +988,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if self.eye_speed >= fsm_parameter['sac_detect_threshold']:         
                             state_start_time = self.t
                             state_inter_time = self.t
+                            self.pd_tgt.draw()
                             self.window.flip()
                             self.trial_data['state_start_t_saccade'].append(self.t)
                             state = 'SACCADE'                 
