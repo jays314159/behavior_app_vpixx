@@ -1242,54 +1242,23 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 
                             
                             # Send trial data to GUI
-                            if inc_sac_indicator and wrong_tgt_indicator and not reward_fixation and num_tgt_display > 0:
-                                if keep_cue_on:
-                                    num_choice += 1
-                                else:
-                                    num_choice_no_cue += 1
-                                     
                             if num_tgt_display > 0 and not reward_fixation and not inc_sac_indicator:
-                                if keep_cue_on:
-                                    num_choice += 1
-                                else:
-                                    num_choice_no_cue += 1
-                                        
+                                num_choice += 1
                                 if not wrong_tgt_indicator:
-                                    if keep_cue_on:
-                                        num_correct += 1
-                                        self.moving_avg_acc.append(1)
-                                    else:
-                                        num_correct_no_cue += 1
-                                        self.move_avg_no_cue.append(1)
-                                else:
-                                    if keep_cue_on:
-                                        self.moving_avg_acc.append(0)
-                                    else:
-                                        self.move_avg_no_cue.append(0)
-                                        
-                                if cue_duration > 1e-3 and num_choice > 0 and num_choice_no_cue > 0:       
-                                    #self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Delay Success: ' +str(self.num_delay - self.num_false_start)+'/'+str(self.num_delay)+' ('+str(int(100*(1-self.num_false_start/self.num_delay)))+'%), Move Avg: '+str(int(100*(1-np.mean(np.array(self.moving_avg_fs)))))+'%; Choice Accuracy: '+ str(self.num_correct)+'/'+str(self.num_choice)+' ('+str(int(100*self.num_correct/self.num_choice))+'%), Move Avg: '+str(int(100*np.mean(np.array(self.moving_avg_acc))))+'%'))
-                                    self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Delay Success: ' +str(self.num_delay - self.num_false_start)+'/'+str(self.num_delay)+' ('+str(int(100*(1-self.num_false_start/self.num_delay)))+'%), Cue Choice Accuracy: ' + str(num_correct)+'/'+str(num_choice)+' ('+str(int(100*num_correct/num_choice))+'%), No Cue Choice: ' + str(num_correct_no_cue)+'/'+str(num_choice_no_cue)+' ('+str(int(100*num_correct_no_cue/num_choice_no_cue))+'%)'))
-                                    
-                                elif cue_duration > 1e-3 and num_choice > 0:
+                            	    num_correct += 1
+                            
+                            if cue_duration > 1e-3:
+                                if num_choice > 0:
                                     self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Delay Success: ' +str(self.num_delay - self.num_false_start)+'/'+str(self.num_delay)+' ('+str(int(100*(1-self.num_false_start/self.num_delay)))+'%), Cue Choice Accuracy: ' + str(num_correct)+'/'+str(num_choice)+' ('+str(int(100*num_correct/num_choice))+'%)'))
-                                elif cue_duration > 1e-3 and num_choice_no_cue > 0:
-                                    self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Delay Success: ' +str(self.num_delay - self.num_false_start)+'/'+str(self.num_delay)+' ('+str(int(100*(1-self.num_false_start/self.num_delay)))+'%), No Cue Choice: ' + str(num_correct_no_cue)+'/'+str(num_choice_no_cue)+' ('+str(int(100*num_correct_no_cue/num_choice_no_cue))+'%)'))
-   
-                                else:
-                                    if num_choice > 0 and num_choice_no_cue > 0:
-                                        self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Choice Accuracy: '+ str(num_correct)+'/'+str(num_choice)+' ('+str(int(100*num_correct/num_choice))+'%), No Cue Choice: ' + str(num_correct_no_cue)+'/'+str(num_choice_no_cue)+' ('+str(int(100*num_correct_no_cue/num_choice_no_cue))+'%)'))
-                                    elif num_choice > 0:
-                                        self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Choice Accuracy: '+ str(num_correct)+'/'+str(num_choice)+' ('+str(int(100*num_correct/num_choice))+'%)'))
-                                    else:
-                                        self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' No Cue Choice: ' + str(num_correct_no_cue)+'/'+str(num_choice_no_cue)+' ('+str(int(100*num_correct_no_cue/num_choice_no_cue))+'%)'))
                                     
-                               #self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' -> completed. ' +str(self.num_correct)+'/'+str(self.num_choice)+' ('+str(int(100*self.num_correct/self.num_choice))+'%), Moving Avg: '+str(int(100*np.mean(np.array(self.moving_avg_acc))))+'%'))
-                            elif num_tgt_display > 0 and cue_duration > 1e-3:
-                                self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Delay Success: ' +str(self.num_delay - self.num_false_start)+'/'+str(self.num_delay)+' ('+str(int(100*(1-self.num_false_start/self.num_delay)))+'%), Move Avg: '+str(int(100*(1-np.mean(np.array(self.moving_avg_fs)))))+'%'))
-                                
+                                else:
+                                    self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Delay Success: ' +str(self.num_delay - self.num_false_start)+'/'+str(self.num_delay)+' ('+str(int(100*(1-self.num_false_start/self.num_delay)))+'%)'))
                             else:
-                                self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num)))
+                                if num_choice > 0:
+                                    self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num) + ' Cue Choice Accuracy: ' + str(num_correct)+'/'+str(num_choice)+' ('+str(int(100*num_correct/num_choice))+'%)'))
+                                    
+                                else:
+                                    self.fsm_to_gui_sndr.send(('log',datetime.now().strftime("%H:%M:%S") + '; trial num: ' + str(trial_num)))
                                 
                                 
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
