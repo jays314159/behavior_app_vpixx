@@ -311,6 +311,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 
                 #fsm_parameter['max_wait_for_corrective'] = 0.5 # Add a menu option for this
                 fsm_parameter['max_wait_for_corrective'] = fsm_parameter['max_wait_for_fixation']
+                fsm_parameter['max_try'] = 5
                 # Init. var
                 self.t = 0
                 old_t = self.t
@@ -374,8 +375,6 @@ class DelaySacFsmProcess(multiprocessing.Process):
                     break
                 # Init. trial variables; reset every trial
                 self.init_trial_data()  
-                self.trial_data['right_cal_matrix'] = cal_parameter['right_cal_matrix']
-                self.trial_data['left_cal_matrix'] = cal_parameter['left_cal_matrix']
                 state = 'INIT'
                 
                 # FSM loop
@@ -388,7 +387,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         num_correct = 0
                         num_choice_no_cue = 0
                         num_correct_no_cue = 0
-                        breakTongue
+                        break
                 
                     if self.mouse_mode:
                         t = time.time()
@@ -617,6 +616,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             
                                
                         false_start_bool = False
+                        num_try = 0
                         
                         state_start_time = self.t
                         state_inter_time = self.t
@@ -775,6 +775,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             if display_cue:
                                 self.draw_cue(cue_type,fsm_parameter['center_cue'],False)
                            
+                            print(f'display_tgt: {display_tgt}')
                             if display_tgt:
                                 for counter_tgt in range(len(tgt_display_coords)):
                                     distractor_pos = tgt_display_coords[counter_tgt]
@@ -799,6 +800,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_cue_fixation'].append(self.t)
+                            num_try += 1
                             state = 'CUE_FIXATION'
                             print('state = CUE_FIXATION')
                             
@@ -1198,7 +1200,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.pd_tgt.draw()
                             self.write_Dout(0,0)
                             self.window.flip()
-                            state = 'STR_TARGET_PURSUIT'
+                            if num_try > fsm_parameter['max_try']:
+                                state = 'TRIAL_SUCCESS'
+                                print("Max num. attempts reached")
+                            else:
+                                state = 'STR_TARGET_PURSUIT'
                             
                     if state == 'WRONG_TARGET':
                         #pump_to_use = 2
@@ -1264,8 +1270,6 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.fsm_to_gui_sndr.send(('trial_data',trial_num, self.trial_data))
                             trial_num += 1
                             self.init_trial_data()  
-                            self.trial_data['right_cal_matrix'] = cal_parameter['right_cal_matrix']
-                            self.trial_data['left_cal_matrix'] = cal_parameter['left_cal_matrix']
                             
                             if not fsm_parameter['manual_trials']:
                                 state = 'INIT'
