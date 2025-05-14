@@ -108,10 +108,9 @@ class PlotGui(FsmGui):
         self.plot_1_eye = self.plot_1_PlotWidget.\
             plot(np.zeros((0)), np.zeros((0)), pen = None,\
             symbolBrush='k', symbolPen='k', symbol='o',symbolSize=10,name='eye',connect='finite')
-        self.plot_1_distract = self.plot_1_PlotWidget.plot(np.zeros((0)), np.zeros((0)), pen = None,\
-            symbolBrush=None, symbolPen='k', symbol='+',symbolSize=14,name='distractor')
-        self.plot_1_indicator = self.plot_1_PlotWidget.plot(np.zeros((0)), np.zeros((0)), pen = None,\
-            symbolBrush=None, symbolPen='m', symbol='o',symbolSize=10,name='indicator')
+        self.plot_1_indicator = self.plot_1_PlotWidget.\
+            plot(np.zeros((0)), np.zeros((0)), pen = None,\
+            symbolBrush='m', symbolPen='m', symbol='o',symbolSize=10,name='indicator',connect='finite')
 
     @pyqtSlot()
     def toolbar_run_QAction_triggered(self):
@@ -280,6 +279,11 @@ class PlotGui(FsmGui):
                 elif len(msg[1]) == 4: # cue and end tgt
                     cue_x, cue_y, end_x, end_y = msg[1]
                     self.plot_1_end.setData([end_x],[end_y])
+                elif len(msg[1]) == 6:
+                    cue_x,cue_y,end_x,end_y,symbol_x,symbol_y = msg[1]
+                    self.plot_1_end.setData([end_x,end_y])
+                    self.plot_1_indicator.setData([symbol_x,symbol_y])
+
                 self.plot_1_cue.setData([cue_x],[cue_y])
             if msg_title == 'trial_data':
                 self.data_manager.trial_num = msg[1]
