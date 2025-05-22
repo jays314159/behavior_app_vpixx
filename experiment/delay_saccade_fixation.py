@@ -299,7 +299,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         
                 
                 self.fsm_parameter = fsm_parameter
-                self.update_target()
+                self.update_target(fsm_parameter)
                 
                 # Create target list
                 #target_pos_list = lib.make_corr_target(fsm_parameter)
@@ -459,7 +459,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         self.trial_data['end_x'].append(self.end_x)
                         self.trial_data['end_y'].append(self.end_y)
                         
-                        cues = ['arrow','landolt','circle']
+                        cues = ['arrow','landolt','circle','color']
                         cue_type = fsm_parameter['cue_type']
                         if cue_type == 'both':
                             cue_type = cues[random.randint(0,1)]
@@ -533,6 +533,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         else:
                             num_tgt_display = 0
                         '''
+                        transparent = (trial_num % dir_switch_interval) > fsm_parameter['num_forced_beginning']
+                        
                         num_tgt_display = 0
                         if np.random.rand() < fsm_parameter['choice_prob'] or reward_fixation:
                             num_tgt_display = max(fsm_parameter['num_tgt_display'] - 1,0)
@@ -622,6 +624,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                
                         false_start_bool = False
                         num_try = 0
+                        
+                        if cue_type == 'color':
+                            display_tgt = False
                         
                         state_start_time = self.t
                         state_inter_time = self.t
@@ -776,7 +781,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                     if state == 'DISPLAY_CUE': # Display all targets and cue simultaneously
                         if not self.eye_blink:
                             if display_cue:
-                                self.draw_cue(cue_type,fsm_parameter['center_cue'],sac_right,False)
+                                self.draw_cue(cue_type,fsm_parameter['center_cue'],False,False,sac_right,self.fix_tgt.pos)
                                 
                             self.fix_tgt.draw()
                            
@@ -922,10 +927,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         
                         else:
                             if display_cue:
-                                self.draw_cue(cue_type,fsm_parameter['center_cue'],sac_right,False)
+                                self.draw_cue(cue_type,fsm_parameter['center_cue'],transparent,False,sac_right,[self.cue_x,self.cue_y])
                             cue_on = True
                             
                             lib.playSound(1000,0.1) # Neutral beep
+                            
                             if display_tgt or not display_tgt:
                                 for counter_tgt in range(len(tgt_display_coords)):
                                     distractor_pos = tgt_display_coords[counter_tgt]
@@ -935,13 +941,14 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                         self.wrong_tgt_shape.draw()
                                     else:
                                         self.draw_tgt(cue_type)
+                            
                                 
                             self.tgt_x = self.cue_x
                             self.tgt_y = self.cue_y
                             self.tgt.pos = (self.tgt_x,self.tgt_y)
                             if fsm_parameter['num_tgt_display'] > 0 and (display_tgt or not display_tgt) :             
                                 #self.tgt.draw()
-                                self.draw_tgt(cue_type,change_tgt=change_tgt)
+                                self.draw_tgt(cue_type,change_tgt=change_tgt,transparent = transparent)
                                     
                             self.pd_tgt.draw()
                             self.write_Dout(0,0)
@@ -977,7 +984,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.tgt_y = self.cue_y
                             self.tgt.pos = (self.tgt_x,self.tgt_y)
                             if fsm_parameter['num_tgt_display'] > 0 and display_tgt:             
-                                self.draw_tgt(cue_type)
+                                self.draw_tgt(cue_type,transparent=False)
                             '''
                             state_start_time = self.t
                             state_inter_time = self.t
@@ -1149,13 +1156,16 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         
                             
                     if state == 'DELIVER_REWARD':
+                        '''
                         if (trial_num % fsm_parameter['pump_switch_interval']) == 0:
                             if pump_to_use == 1:
                                 pump_to_use = 2
                             else:
                                 pump_to_use = 1
                             self.fsm_to_gui_sndr.send(('log','Pump switchd to '+str(pump_to_use)))
-                        
+                        '''
+                        pump_to_use = np.random.choice([1,2])
+                        print(f'pump to use: {pump_to_use}')
                         self.fsm_to_gui_sndr.send(('pump',pump_to_use,'pump',0))
                         
                         lib.playSound(2000,0.1)
@@ -1168,7 +1178,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if reward_fixation:
                             self.fix_tgt.draw()
                         else:
-                            self.draw_tgt(cue_type)
+                            self.draw_cue(cue_type,fsm_parameter['center_cue'],False,False,sac_right,[self.cue_x,self.cue_y])
+                            self.draw_tgt(cue_type,change_tgt=change_tgt)
+                           
                         
                         self.write_Dout(1,1)
                         self.window.flip()
@@ -1314,7 +1326,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.trial_data['cal_matrix'] = eye_data['cal_matrix']
         self.trial_data['eye_time_data'] = eye_data['eye_time_data']
     
-    def update_target(self):
+    def update_target(self,fsm_parameter):
         tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'tgt')
         pd_tgt_parameter,_ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'pd_tgt')
         arrow_param,_ = lib.load_parameter('','cue_parameter.json',True,False,lib.set_default_tgt_parameter,'arrow')
@@ -1354,9 +1366,31 @@ class DelaySacFsmProcess(multiprocessing.Process):
         
         self.cue_ring = visual.Circle(win=self.window,size=circle_param['outer_size'],fillColor=circle_param['fill_color'],units='deg', lineColor=circle_param['line_color'],lineWidth=circle_param['line_width'])
         self.cue_ring_left = visual.Circle(win=self.window,size=circle_param['outer_size'],fillColor=circle_param['left_color'],units='deg', lineColor=circle_param['line_color'],lineWidth=circle_param['line_width'])
+        
+        print(circle_param['fill_color'])
+        fill_color = np.array(circle_param['fill_color'])*fsm_parameter['opacity'] + (1-fsm_parameter['opacity'])*np.array([1.0,1.0,1.0])
+        print(fill_color)
+        fill_color_left = np.array(circle_param['left_color'])*fsm_parameter['opacity'] + (1-fsm_parameter['opacity'])*np.array([1.0,1.0,1.0])
+        line_color = np.array(circle_param['line_color'])*fsm_parameter['opacity'] + (1-fsm_parameter['opacity'])*np.array([1,1,1])
+        self.cue_transparent = visual.Circle(win=self.window,size=circle_param['outer_size'],fillColor=fill_color,units='deg', lineColor=line_color,lineWidth=circle_param['line_width'])
         self.cue_white_circ = visual.Circle(win=self.window,size=circle_param['inner_size'],fillColor=(1,1,1),units='deg', lineColor=circle_param['line_color'],lineWidth=circle_param['line_width'])
+        self.cue_white_transparent =  visual.Circle(win=self.window,size=circle_param['inner_size'],fillColor=(1,1,1),units='deg', lineColor=line_color,lineWidth=circle_param['line_width'])
+        self.cue_ring_left_trans = visual.Circle(win=self.window,size=circle_param['outer_size'],fillColor=fill_color_left,units='deg', lineColor=line_color,lineWidth=circle_param['line_width'])
+        
+        
+        fill_color = np.array([0,0,0])*fsm_parameter['opacity'] + (1-fsm_parameter['opacity'])*np.array([1.0,1.0,1.0])
+        line_color = np.array([0,0,0])*fsm_parameter['opacity'] + (1-fsm_parameter['opacity'])*np.array([1.0,1.0,1.0])
+        self.transparent_tgt = visual.Rect(win=self.window, width=tgt_parameter['size'],height=tgt_parameter['size'], units='deg', 
+                      lineColor=line_color, fillColor=fill_color,
+                      lineWidth=tgt_parameter['line_width'])
+        
+        
         self.tgt_cross_1 = visual.Rect(win=self.window,width=cross_param['width'],height=cross_param['height'],units='deg', fillColor=tgt_parameter['fill_color'],ori=45)
         self.tgt_cross_2 = visual.Rect(win=self.window,width=cross_param['width'],height=cross_param['height'],units='deg', fillColor=tgt_parameter['fill_color'],ori=-45)
+        
+        fill_color = fill_color = np.array([0,0,0])*fsm_parameter['opacity'] + (1-fsm_parameter['opacity'])*np.array([1.0,1.0,1.0])
+        self.tgt_cross_tp_1 = visual.Rect(win=self.window,width=cross_param['width'],height=cross_param['height'],units='deg', fillColor=fill_color,lineColor=fill_color,ori=45)
+        self.tgt_cross_tp_2 = visual.Rect(win=self.window,width=cross_param['width'],height=cross_param['height'],units='deg', fillColor=fill_color,lineColor=fill_color,ori=-45)
         
         self.landolt_c = visual.Circle(win=self.window,size=landolt_param['size'], lineColor=landolt_param['line_color'],fillColor=landolt_param['line_color'],lineWidth=0, units='deg')
         self.landolt_circ_inner = visual.Circle(win=self.window,size=landolt_param['size'] - landolt_param['line_width'], fillColor="white", lineWidth=0, units="deg")
@@ -1369,16 +1403,26 @@ class DelaySacFsmProcess(multiprocessing.Process):
         #self.pd_tgt.draw()
         self.window.clearBuffer() # clear the back buffer of previously drawn stimuli - Poth, 2018
         
-    def draw_tgt(self,cue_type,change_tgt=False):
+    def draw_tgt(self,cue_type,change_tgt=False,transparent=False):
         if cue_type == 'circle' and not change_tgt:
             self.tgt_cross_1.pos = self.tgt.pos
             self.tgt_cross_2.pos = self.tgt.pos
-            self.tgt_cross_1.draw()
-            self.tgt_cross_2.draw()
+            if transparent:
+                self.tgt_cross_tp_1.pos = self.tgt.pos
+                self.tgt_cross_tp_2.pos = self.tgt.pos
+                self.tgt_cross_tp_1.draw()
+                self.tgt_cross_tp_2.draw()
+            else:
+                self.tgt_cross_1.draw()
+                self.tgt_cross_2.draw()
         else:
-            self.tgt.draw()
+            if transparent:
+                self.transparent_tgt.pos = self.tgt.pos
+                self.transparent_tgt.draw()
+            else:
+                self.tgt.draw()
             
-    def draw_cue(self,cue_type,center_cue,sac_right,mask):
+    def draw_cue(self,cue_type,center_cue,transparent,mask,sac_right,pos):
         if cue_type == 'arrow':
             if mask:
                 self.arrow_mask.pos = self.cue.pos
@@ -1398,15 +1442,41 @@ class DelaySacFsmProcess(multiprocessing.Process):
             self.landolt_circ_inner.draw()
             if not mask:
                 self.landolt_rect.draw()
-        else:
-            #self.cue_ring.pos = [self.cue_x,self.cue_y]
-            #self.cue_white_circ.pos = self.cue_ring.pos
-            if sac_right >= 0:
-                self.cue_ring.draw()
+        elif cue_type == 'circle':
+            self.cue_ring.pos = [self.cue_x,self.cue_y]
+            self.cue_white_circ.pos = self.cue_ring.pos
+            
+            if transparent:
+                self.cue_transparent.pos = self.cue_ring.pos
+                self.cue_white_transparent.pos = self.cue_ring.pos
+                self.cue_transparent.draw()
+                self.cue_white_transparent.draw()
             else:
-                self.cue_ring_left.draw()
-            self.cue_white_circ.draw()
+            	self.cue_ring.draw()
+            	self.cue_white_circ.draw()
             #self.draw_cue('arrow',True,False)
+        else:
+            if sac_right >= 0:
+                if transparent:
+                    self.cue_transparent.pos = pos
+                    self.cue_transparent.draw()
+                else:
+                    self.cue_ring.pos = pos
+                    self.cue_ring.draw()
+            else:
+                if transparent:
+                    self.cue_ring_left_trans.pos = pos
+                    self.cue_ring_left_trans.draw()
+                else:
+                    self.cue_ring_left.pos = pos
+                    self.cue_ring_left.draw()
+                    
+            if transparent:
+                self.cue_white_transparent.pos = pos
+                self.cue_white_transparent.draw()
+            else:
+                self.cue_white_circ.pos = pos
+                self.cue_white_circ.draw()
     
     def write_Dout(self,dout_ch1_value,dout_ch5_value):
         with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
@@ -1505,7 +1575,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                      'tgt_prob':1,
                      'manual_trials':False,
                      'post_delay':0,
-                     'max_try':999
+                     'max_try':999,
+                     'opacity':1
                      }
         return parameter
         
@@ -1562,7 +1633,7 @@ class DelaySacGui(FsmGui):
         
         self.mouse_mode = False
         
-        self.cue_types = ['arrow','landolt','both','circle']
+        self.cue_types = ['arrow','landolt','both','circle','color']
 
         which_eye_tracked = self.cal_parameter['which_eye_tracked'].lower()
         if not self.cal_parameter[which_eye_tracked + '_cal_status']:
@@ -1630,6 +1701,7 @@ class DelaySacGui(FsmGui):
         self.change_prob_QDoubleSpinBox.valueChanged.connect(self.change_prob_QDoubleSpinBox_valueChanged)
         self.manual_trial_QCheckBox.stateChanged.connect(self.manual_trial_QCheckBox_stateChanged)
         self.max_attempt_QDoubleSpinBox.valueChanged.connect(self.max_attempt_QDoubleSpinBox_valueChanged)
+        self.opacity_QDoubleSpinBox.valueChanged.connect(self.opacity_QDoubleSpinBox_valueChanged)
         
         self.save_QPushButton.clicked.connect(self.save_QPushButton_clicked)
         
@@ -1947,6 +2019,10 @@ class DelaySacGui(FsmGui):
     @pyqtSlot()
     def max_attempt_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['max_try'] = self.max_attempt_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def opacity_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['opacity'] = self.opacity_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
         
         
@@ -2328,7 +2404,7 @@ class DelaySacGui(FsmGui):
         self.cue_type_QLabel.setAlignment(Qt.AlignRight)
         self.cue_type_QHBoxLayout.addWidget(self.cue_type_QLabel)
         self.cue_type_QComboBox = QComboBox()
-        self.cue_type_QComboBox.addItems(['Arrow', 'Landolt C', 'Both','Circle'])
+        self.cue_type_QComboBox.addItems(['Arrow', 'Landolt C', 'Both','Circle','Color'])
         self.cue_type_QHBoxLayout.addWidget(self.cue_type_QComboBox)
         self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.cue_type_QHBoxLayout)
         
@@ -2449,7 +2525,7 @@ class DelaySacGui(FsmGui):
         self.dir_switch_interval_QDoubleSpinBox.setSingleStep(1)
         self.dir_switch_interval_QDoubleSpinBox.setDecimals(0)
         self.dir_switch_interval_QHBoxLayout.addWidget(self.dir_switch_interval_QDoubleSpinBox)
-        #self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.dir_switch_interval_QHBoxLayout)
+        self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.dir_switch_interval_QHBoxLayout)
         
         
         self.num_forced_QHBoxLayout = QHBoxLayout()
@@ -2495,6 +2571,17 @@ class DelaySacGui(FsmGui):
         self.max_attempt_QDoubleSpinBox.setDecimals(0)
         self.max_attempt_QHBoxLayout.addWidget(self.max_attempt_QDoubleSpinBox)
         self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.max_attempt_QHBoxLayout)
+        
+        self.opacity_QHBoxLayout = QHBoxLayout()
+        self.opacity_QLabel = QLabel("Cue Opacity: ")
+        self.opacity_QLabel.setAlignment(Qt.AlignRight)
+        self.opacity_QHBoxLayout.addWidget(self.opacity_QLabel)
+        self.opacity_QDoubleSpinBox = QDoubleSpinBox()
+        self.opacity_QDoubleSpinBox.setValue(1)
+        self.opacity_QDoubleSpinBox.setSingleStep(0.1)
+        self.opacity_QDoubleSpinBox.setDecimals(2)
+        self.opacity_QHBoxLayout.addWidget(self.opacity_QDoubleSpinBox)
+        self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.opacity_QHBoxLayout)
         
         '''
         self.reverse_prob_QHBoxLayout = QHBoxLayout()
@@ -2565,7 +2652,8 @@ class DelaySacGui(FsmGui):
                          'num_forced_beginning':0,
                          'tgt_prob':1,
                          'manual_trials':False,
-                         'max_try':999
+                         'max_try':999,
+                         'opacity':1
                          }
         return parameter
     
@@ -2597,7 +2685,7 @@ class DelaySacGui(FsmGui):
         self.cue_duration_QDoubleSpinBox.setValue(self.exp_parameter['cue_duration'])
         self.mask_duration_QDoubleSpinBox.setValue(self.exp_parameter['mask_duration'])
         self.cue_probability_QDoubleSpinBox.setValue(self.exp_parameter['cue_probability'])
-        cue_types = ['arrow','landolt','both','circle']
+        cue_types = ['arrow','landolt','both','circle','color']
         self.cue_type_QComboBox.setCurrentIndex(cue_types.index(self.exp_parameter['cue_type']))
         self.min_delay_QDoubleSpinBox.setValue(self.exp_parameter['min_delay'])
         self.max_delay_QDoubleSpinBox.setValue(self.exp_parameter['max_delay'])
@@ -2628,6 +2716,7 @@ class DelaySacGui(FsmGui):
         self.num_forced_QDoubleSpinBox.setValue(self.exp_parameter['num_forced_beginning'])
         self.tgt_prob_QDoubleSpinBox.setValue(self.exp_parameter['tgt_prob'])
         self.change_prob_QDoubleSpinBox.setValue(self.exp_parameter['change_tgt'])
+        self.opacity_QDoubleSpinBox.setValue(self.exp_parameter['opacity'])
         
         if self.center_cue_QCheckBox.isChecked():
             self.fixed_cue_pos_QCheckBox.setDisabled(True)
