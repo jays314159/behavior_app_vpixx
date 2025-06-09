@@ -1,6 +1,6 @@
 """
 Laboratory for Computational Motor Control, Johns Hopkins School of Medicine
-@author: Jay Pi <jay.s.314159@gmail.com>
+@author: Elijah Taeckens <etaeckens@gmail.com>
 """
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QApplication, QComboBox, QPushButton, QLabel, QHBoxLayout, QDoubleSpinBox, QCheckBox, QPlainTextEdit,\
@@ -13,7 +13,7 @@ from psychopy import event as psychopy_event
 from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxSelectDevice,DPxUpdateRegCache, DPxSetTPxAwake,\
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetDoutValue, TPxReadTPxData,\
-                              DPxSetTPxSleep, DPxClose
+                              DPxSetTPxSleep, DPxClose, DPxGetDinValue
 
 from fsm_gui import FsmGui
 from target import TargetWidget
@@ -48,6 +48,10 @@ class DelaySacEyeProcess(multiprocessing.Process):
         self.dout_ch_1_value = 0
         self.dout_ch_5_value = 0
         
+        self.tube_move_left = False
+        self.tube_move_right = False
+        self.tube_move_center = True
+        
         self.mouse_mode = False
         #self.no_tracker = False
         #self.no_tracker_Event.clear()
@@ -71,6 +75,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
         # Init. var.
         random_signal_flip_duration = 0.015 # in sec., how often to flip random signal
         bitMask = 0xffffff # for VPixx digital out, in hex bit
+        tongue_bitMask = 1 << 8 | 1 << 10
         DPxSetDoutValue(0, bitMask)
         DPxUpdateRegCache()
             
@@ -97,6 +102,9 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 right_eye_blink = True
                 left_eye_blink = True
                 run_exp = True
+                touch_detected = False
+                touch_countdown_period = False
+                tube_moved = False
                 old_t = 0;
                 random_signal_t = self.t
                 
@@ -104,7 +112,8 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
                     self.dout_ch_1.value = 1
                     self.dout_ch_5.value = 1
-                    DPxSetDoutValue(self.dout_ch_1.value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5.value, bitMask)
+                    DPxSetDoutValue(self.dout_ch_1_value + (dout_ch_3 << 2)+ (self.dout_ch_5_value << 4) + (self.tube_move_left << 8) + (self.tube_move_right << 10), bitMask)
+                    #DPxSetDoutValue(self.dout_ch_1.value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5.value, bitMask)
                     DPxUpdateRegCache()
                     
             if (self.t - random_signal_t) > random_signal_flip_duration:
@@ -113,7 +122,8 @@ class DelaySacEyeProcess(multiprocessing.Process):
                     dout_ch_3 = 1 
                 else:
                     dout_ch_3 = 0
-                DPxSetDoutValue(self.dout_ch_1_value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5_value, bitMask)
+                DPxSetDoutValue(self.dout_ch_1_value + (dout_ch_3 << 2)+ (self.dout_ch_5_value << 4) + (self.tube_move_left << 8) + (self.tube_move_right << 10), bitMask)
+                #DPxSetDoutValue(self.dout_ch_1_value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5_value, bitMask)
                 DPxUpdateRegCache()
                     
             self.t = TPxBestPolyGetEyePosition(cal_data, raw_data)
@@ -185,10 +195,39 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 with self.dout_ch_1.get_lock(), self.dout_ch_5.get_lock():
                     self.dout_ch_1_value = self.dout_ch_1.value
                     self.dout_ch_5_value = self.dout_ch_5.value
-                    DPxSetDoutValue(self.dout_ch_1_value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5_value, bitMask)
+
+                    DPxSetDoutValue(self.dout_ch_1_value + (dout_ch_3 << 2)+ (self.dout_ch_5_value << 4) + (self.tube_move_left << 8) + (self.tube_move_right << 10), bitMask)
+                    
+                    #DPxSetDoutValue(self.dout_ch_1_value + dout_ch_3 * (2**2) + self.dout_ch_5_value * (2**4), bitMask)
+                    
+                        
                     DPxUpdateRegCache()
                 self.data_ch_change.clear()
-                         
+                
+            din_value = bin(DPxGetDinValue())
+            touch_detected = din_value[13] == '0'
+            
+            if touch_detected and not touch_countdown_period:
+                touch_countdown_period = True
+                tube_moved = False
+                countdown_start = time.time()
+                              
+            if touch_countdown_period:
+                if time.time() - countdown_start > 0.5 and not tube_moved:
+                    tube_moved = True
+                    self.tube_move_right = True
+                    self.tube_move_left = False
+                    self.tube_move_center = False
+                    DPxSetDoutValue(1 << 10, tongue_bitMask)
+                    DPxUpdateRegCache()
+                    
+                if tube_moved and time.time() - countdown_start > 3:
+                    touch_countdown_period = False
+                    self.tube_move_center = True
+                    self.tube_move_right = False
+                    self.tube_move_left = False
+                    DPxSetDoutValue(0, tongue_bitMask)
+                    DPxUpdateRegCache()
                         
                         
     def init_trial_data(self):
