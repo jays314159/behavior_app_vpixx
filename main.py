@@ -15,7 +15,7 @@ from experiment.simple_saccade import SimpleSacGuiProcess, SimpleSacFsmProcess
 from experiment.corr_saccade import CorrSacGuiProcess, CorrSacFsmProcess
 from experiment.opto_simple_saccade import OptoSimpleSacGuiProcess, OptoSimpleSacFsmProcess
 from experiment.reward_prediction import RwdPredGuiProcess, RwdPredFsmProcess
-from experiment.delay_saccade_fixation import DelaySacEyeProcess, DelaySacFsmProcess, DelaySacGuiProcess
+from experiment.delay_saccade_simple import DelaySacEyeProcess, DelaySacFsmProcess, DelaySacGuiProcess
 from target import TargetWidget
 import app_lib as lib
 
