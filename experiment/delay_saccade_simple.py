@@ -762,7 +762,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                     
                     if state == 'SACCADE':
                         eye_dist_from_start_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
-                        if eye_dist_from_start_tgt > fsm_parameter['fix_area']/2:
+                        if fsm_parameter['include_corr_sac'] and eye_dist_from_start_tgt > fsm_parameter['fix_area']/2:
                             # Check to see if saccade is in the right direction
                             target_dir_vector = [self.cue_x-self.start_x,self.cue_y-self.start_y]
                             unit_target_dir_vector = target_dir_vector/np.linalg.norm(target_dir_vector)
@@ -771,12 +771,27 @@ class DelaySacFsmProcess(multiprocessing.Process):
 
                             unit_saccade_dir_vector = saccade_dir_vector/np.linalg.norm(saccade_dir_vector)                    
                             angle_diff = np.arccos(np.dot(unit_target_dir_vector, unit_saccade_dir_vector))
+                            
+                            state_start_time = self.t
+                            state_inter_time = self.t
 
-                            if angle_diff < np.pi/2 and fsm_parameter['include_corr_sac']:
+                            if angle_diff < np.pi/2:
                                 self.tgt.pos = (self.end_x,self.end_y)              
                                 #self.tgt.draw()
                                 self.draw_tgt(tgt_symbol,transparent = tgt_trans_bool)
-                                
+                                self.pd_tgt.draw()
+                                self.window.flip()
+                                self.trial_data['state_start_t_detect_sac_end'].append(self.t)
+                                state = 'DETECT_SACCADE_END'
+                                print('state = DETECT_SACCADE_END')
+                            else:
+                                self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
+                                self.write_Dout(1,1)
+                                self.window.flip() 
+                                state = 'INCORRECT_SACCADE'
+                                print('state = INCORRECT SACCADE')
+                              
+                        if not fsm_parameter['include_corr_sac']:  
                             self.pd_tgt.draw()
                             self.window.flip()
                             state_start_time = self.t
@@ -785,7 +800,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state = 'DETECT_SACCADE_END'
                             print('state = DETECT_SACCADE_END')
                             
-                        elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
+                        if (self.t - state_start_time) >= fsm_parameter['pun_time']:
                             ######
                             # lib.playSound(200,0.1) # punishment beep
                             ######
