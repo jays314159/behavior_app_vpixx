@@ -328,7 +328,7 @@
             "num_cue_dir": 1,
             "center_cue": true,
             "keep_cue_on": 0.0,
-            "include_corr_sac": false,
+            "include_corr_sac": true,
             "second_dir": 180.0,
             "dir_switch_interval": 0.0,
             "moving_avg_samp_num": 25.0,
@@ -341,6 +341,9 @@
             "max_try": 5.0,
             "opacity": 0.0,
             "tgt_opacity": 1.0,
+            "tube_move_prob": 0.5,
+            "tube_delay": 0.5,
+            "tube_reset_time": 0.75,
             "right_eye_tracked": 0,
             "left_eye_tracked": 1,
             "version": 1.0

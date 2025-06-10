@@ -29,7 +29,7 @@ from datetime import datetime
 import time
 
 class DelaySacEyeProcess(multiprocessing.Process):
-    def __init__(self,exp_name,data_sndr,stop_exp_Event,stop_fsm_process_Event,data_change_Event,end_trial_Event,real_time_data_Array, data_ch_1,data_ch_5,data_ch_change, main_parameter,mon_parameter):
+    def __init__(self,exp_name,data_sndr,stop_exp_Event,stop_fsm_process_Event,data_change_Event,end_trial_Event,real_time_data_Array, data_ch_1,data_ch_5,data_ch_change,mouse_enable_Event, main_parameter,mon_parameter):
         super().__init__()
         self.exp_name = exp_name
         self.data_sndr = data_sndr
@@ -47,6 +47,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
         self.data_ch_change = data_ch_change
         self.dout_ch_1_value = 0
         self.dout_ch_5_value = 0
+        self.mouse_enable_Event = mouse_enable_Event
         
         self.tube_move_left = False
         self.tube_move_right = False
@@ -78,11 +79,16 @@ class DelaySacEyeProcess(multiprocessing.Process):
         tongue_bitMask = 1 << 8 | 1 << 10
         DPxSetDoutValue(0, bitMask)
         DPxUpdateRegCache()
+        
+        if self.mouse_enable_Event.is_set():
+            exp_parameter_filename = 'mouse_exp_parameter.json'
+        else:
+            exp_parameter_filename = 'exp_parameter.json'
             
             
         new_data_received = False
         cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])
-
+        fsm_parameter, _ = lib.load_parameter('experiment',exp_parameter_filename,True,True,self.set_default_parameter,self.exp_name, self.main_parameter['current_monkey'])
 
         run_exp = False
         self.init_trial_data()
@@ -102,9 +108,16 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 right_eye_blink = True
                 left_eye_blink = True
                 run_exp = True
+    
                 touch_detected = False
                 touch_countdown_period = False
                 tube_moved = False
+                self.tube_move_center = True
+                self.tube_move_right = False
+                self.tube_move_left = False
+                DPxSetDoutValue(0, tongue_bitMask)
+                DPxUpdateRegCache()
+    
                 old_t = 0;
                 random_signal_t = self.t
                 
@@ -206,26 +219,32 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 
             din_value = bin(DPxGetDinValue())
             touch_detected = din_value[13] == '0'
+            if touch_detected:
+                print("Touch detected")
             
             if touch_detected and not touch_countdown_period:
                 touch_countdown_period = True
                 tube_moved = False
                 countdown_start = time.time()
+                self.trial_data['tongue_touch_times'].append(self.t)
                               
             if touch_countdown_period:
-                if time.time() - countdown_start > 0.5 and not tube_moved:
+                if time.time() - countdown_start > fsm_parameter['tube_delay'] and not tube_moved:
                     tube_moved = True
-                    self.tube_move_right = True
-                    self.tube_move_left = False
-                    self.tube_move_center = False
-                    DPxSetDoutValue(1 << 10, tongue_bitMask)
-                    DPxUpdateRegCache()
+                    if np.random.rand() < fsm_parameter['tube_move_prob']:
+                        self.tube_move_right = False
+                        self.tube_move_left = True
+                        self.tube_move_center = False
+                        DPxSetDoutValue(1 << 8, tongue_bitMask)
+                        DPxUpdateRegCache()
+                        self.trial_data['tube_move_out'].append(self.t)
                     
-                if tube_moved and time.time() - countdown_start > 3:
+                if tube_moved and time.time() - countdown_start > fsm_parameter['tube_reset_time']:
                     touch_countdown_period = False
                     self.tube_move_center = True
                     self.tube_move_right = False
                     self.tube_move_left = False
+                    self.trial_data['tube_move_back'].append(self.t)
                     DPxSetDoutValue(0, tongue_bitMask)
                     DPxUpdateRegCache()
                         
@@ -240,6 +259,13 @@ class DelaySacEyeProcess(multiprocessing.Process):
         self.trial_data['eye_x_data'] = []
         self.trial_data['eye_y_data'] = []
         self.trial_data['eye_time_data'] = []
+        self.trial_data['tongue_touch_times'] = []
+        self.trial_data['tube_move_out'] = []
+        self.trial_data['tube_move_back'] = []
+    
+    def set_default_parameter(self):
+       parameter = {}
+       return parameter
         
         
             
@@ -1002,6 +1028,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                     if state == 'INCORRECT_SACCADE':
                         # self.fsm_to_gui_sndr.send(('pun_beep',0))
                         if ((self.t - state_start_time) > fsm_parameter['pun_time']):
+                            num_try = num_try + 1
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
@@ -1105,6 +1132,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.trial_data['eye_y_data'] = eye_data['eye_y_data']
         self.trial_data['cal_matrix'] = eye_data['cal_matrix']
         self.trial_data['eye_time_data'] = eye_data['eye_time_data']
+        self.trial_data['tongue_touch_times'] = eye_data['tongue_touch_times']
+        self.trial_data['tube_move_out'] = eye_data['tube_move_out']
+        self.trial_data['tube_move_back'] = eye_data['tube_move_back']
     
     def update_target(self,fsm_parameter):
         tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'tgt')
@@ -1368,6 +1398,10 @@ class DelaySacGui(FsmGui):
         self.max_attempt_QDoubleSpinBox.valueChanged.connect(self.max_attempt_QDoubleSpinBox_valueChanged)
         self.tgt_opacity_QDoubleSpinBox.valueChanged.connect(self.tgt_opacity_QDoubleSpinBox_valueChanged)
         
+        self.tube_move_prob_QDoubleSpinBox.valueChanged.connect(self.tube_move_prob_QDoubleSpinBox_valueChanged)
+        self.tube_delay_QDoubleSpinBox.valueChanged.connect(self.tube_delay_QDoubleSpinBox_valueChanged)
+        self.tube_reset_time_QDoubleSpinBox.valueChanged.connect(self.tube_reset_time_QDoubleSpinBox_valueChanged)
+        
         self.save_QPushButton.clicked.connect(self.save_QPushButton_clicked)
         
         self.mouse_enable_QPushButton.clicked.connect(self.mouse_enable_clicked)
@@ -1625,6 +1659,18 @@ class DelaySacGui(FsmGui):
     def tgt_opacity_QDoubleSpinBox_valueChanged(self):
         self.exp_parameter['tgt_opacity'] = self.tgt_opacity_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def tube_move_prob_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['tube_move_prob'] = self.tube_move_prob_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def tube_delay_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['tube_delay'] = self.tube_delay_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def tube_reset_time_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['tube_reset_time'] = self.tube_reset_time_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     
         
         
@@ -1682,9 +1728,13 @@ class DelaySacGui(FsmGui):
         self.sidepanel_params_3_tab_QWidget = QWidget()
         self.sidepanel_params_3_tab_QVBoxLayout = QVBoxLayout()
         self.sidepanel_params_3_tab_QWidget.setLayout(self.sidepanel_params_3_tab_QVBoxLayout)
+        self.sidepanel_params_4_tab_QWidget = QWidget()
+        self.sidepanel_params_4_tab_QVBoxLayout = QVBoxLayout()
+        self.sidepanel_params_4_tab_QWidget.setLayout(self.sidepanel_params_4_tab_QVBoxLayout)
         self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_1_tab_QWidget, 'General')
         self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_2_tab_QWidget, 'Corr Sac.')
         self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_3_tab_QWidget, 'Delay Task')
+        self.sidepanel_params_TabWidget.addTab(self.sidepanel_params_4_tab_QWidget, 'Tongue')
         
         self.sidepanel_custom_QVBoxLayout.addWidget(self.sidepanel_params_TabWidget)
         
@@ -2061,6 +2111,39 @@ class DelaySacGui(FsmGui):
         self.tgt_opacity_QHBoxLayout.addWidget(self.tgt_opacity_QDoubleSpinBox)
         self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.tgt_opacity_QHBoxLayout)
         
+        self.tube_move_prob_QHBoxLayout = QHBoxLayout()
+        self.tube_move_prob_QLabel = QLabel("Move Tube Probability: ")
+        self.tube_move_prob_QLabel.setAlignment(Qt.AlignRight)
+        self.tube_move_prob_QHBoxLayout.addWidget(self.tube_move_prob_QLabel)
+        self.tube_move_prob_QDoubleSpinBox = QDoubleSpinBox()
+        self.tube_move_prob_QDoubleSpinBox.setValue(1)
+        self.tube_move_prob_QDoubleSpinBox.setSingleStep(0.1)
+        self.tube_move_prob_QDoubleSpinBox.setDecimals(2)
+        self.tube_move_prob_QHBoxLayout.addWidget(self.tube_move_prob_QDoubleSpinBox)
+        self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.tube_move_prob_QHBoxLayout)
+        
+        self.tube_delay_QHBoxLayout = QHBoxLayout()
+        self.tube_delay_QLabel = QLabel("Move Tube Delay: ")
+        self.tube_delay_QLabel.setAlignment(Qt.AlignRight)
+        self.tube_delay_QHBoxLayout.addWidget(self.tube_delay_QLabel)
+        self.tube_delay_QDoubleSpinBox = QDoubleSpinBox()
+        self.tube_delay_QDoubleSpinBox.setValue(1)
+        self.tube_delay_QDoubleSpinBox.setSingleStep(0.1)
+        self.tube_delay_QDoubleSpinBox.setDecimals(2)
+        self.tube_delay_QHBoxLayout.addWidget(self.tube_delay_QDoubleSpinBox)
+        self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.tube_delay_QHBoxLayout)
+        
+        self.tube_reset_time_QHBoxLayout = QHBoxLayout()
+        self.tube_reset_time_QLabel = QLabel("Tube Reset Time: ")
+        self.tube_reset_time_QLabel.setAlignment(Qt.AlignRight)
+        self.tube_reset_time_QHBoxLayout.addWidget(self.tube_reset_time_QLabel)
+        self.tube_reset_time_QDoubleSpinBox = QDoubleSpinBox()
+        self.tube_reset_time_QDoubleSpinBox.setValue(1)
+        self.tube_reset_time_QDoubleSpinBox.setSingleStep(0.1)
+        self.tube_reset_time_QDoubleSpinBox.setDecimals(2)
+        self.tube_reset_time_QHBoxLayout.addWidget(self.tube_reset_time_QDoubleSpinBox)
+        self.sidepanel_params_4_tab_QVBoxLayout.addLayout(self.tube_reset_time_QHBoxLayout)
+        
         
         self.save_QPushButton = QPushButton('Save parameters')
         self.sidepanel_custom_QVBoxLayout.addWidget(self.save_QPushButton)
@@ -2165,7 +2248,9 @@ class DelaySacGui(FsmGui):
         self.tgt_prob_QDoubleSpinBox.setValue(self.exp_parameter['tgt_prob'])
         self.change_prob_QDoubleSpinBox.setValue(self.exp_parameter['change_tgt'])
         self.tgt_opacity_QDoubleSpinBox.setValue(self.exp_parameter['tgt_opacity'])
-        
+        self.tube_move_prob_QDoubleSpinBox.setValue(self.exp_parameter['tube_move_prob'])
+        self.tube_delay_QDoubleSpinBox.setValue(self.exp_parameter['tube_delay'])
+        self.tube_reset_time_QDoubleSpinBox.setValue(self.exp_parameter['tube_reset_time'])
 
 
         

@@ -392,7 +392,7 @@ class MainGui(QMainWindow):
        	exp_name='delay_saccade'
         fsm_process = DelaySacFsmProcess(exp_name,fsm_to_gui_sndr, gui_to_fsm_rcvr, data_rcvr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,mouse_toggle_Event,next_trl_Event,real_time_data_Array,eye_data_Array, data_ch_1,data_ch_5,data_ch_change, self.main_parameter,self.mon_parameter)
         
-        eye_process = DelaySacEyeProcess(exp_name,data_sndr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,eye_data_Array, data_ch_1,data_ch_5,data_ch_change,self.main_parameter,self.mon_parameter)
+        eye_process = DelaySacEyeProcess(exp_name,data_sndr,stop_exp_Event, stop_fsm_process_Event,data_change_Event,end_trial_Event,eye_data_Array, data_ch_1,data_ch_5,data_ch_change,mouse_toggle_Event, self.main_parameter,self.mon_parameter)
         
         gui_process = DelaySacGuiProcess(exp_name, fsm_to_gui_rcvr, gui_to_fsm_sndr, stop_exp_Event, stop_fsm_process_Event, mouse_toggle_Event,next_trl_Event, real_time_data_Array, self.main_parameter)
         
