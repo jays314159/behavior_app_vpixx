@@ -519,7 +519,10 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         tgt_symbol = 'cross'
                             
                         # Send target data
-                        self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y)))
+                        if fsm_parameter['include_corr_sac']:
+                            self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y,self.end_x,self.end_y)))
+                        else:
+                            self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y)))
                         pursuit_angle = np.random.randint(0,360)
                         pursuit_start_x = np.cos(pursuit_angle*np.pi/180)*fsm_parameter['pursuit_amp']
                         pursuit_start_x += self.start_x
