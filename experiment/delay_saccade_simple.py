@@ -112,6 +112,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 touch_detected = False
                 touch_countdown_period = False
                 tube_moved = False
+                tube_moved_loop_skip = False
                 self.tube_move_center = True
                 self.tube_move_right = False
                 self.tube_move_left = False
@@ -230,10 +231,11 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 self.trial_data['tongue_touch_times'].append(self.t)
                               
             if touch_countdown_period:
-                if time.time() - countdown_start > fsm_parameter['tube_delay'] and not tube_moved:
-                    tube_moved = True
+                if time.time() - countdown_start > fsm_parameter['tube_delay'] and not tube_moved_loop_skip:
+                    tube_move_loop_skip = True
                     if np.random.rand() < fsm_parameter['tube_move_prob']:
                         print("Tube moved")
+                        tube_moved = True
                         self.tube_move_right = False
                         self.tube_move_left = True
                         self.tube_move_center = False
@@ -241,15 +243,19 @@ class DelaySacEyeProcess(multiprocessing.Process):
                         DPxUpdateRegCache()
                         self.trial_data['tube_move_out'].append(self.t)
                     
-                if tube_moved and time.time() - countdown_start > fsm_parameter['tube_reset_time']:
-                    print("Tube moved back")
-                    touch_countdown_period = False
-                    self.tube_move_center = True
-                    self.tube_move_right = False
-                    self.tube_move_left = False
-                    self.trial_data['tube_move_back'].append(self.t)
-                    DPxSetDoutValue(0, tongue_bitMask)
-                    DPxUpdateRegCache()
+                if tube_moved_loop_skip and time.time() - countdown_start > fsm_parameter['tube_reset_time']:
+                    tube_moved_loop_skip = False
+                    if tube_moved:
+                        print("Tube moved back")
+                        tube_moved = False
+                        tube_moved_loop_skip = False
+                        touch_countdown_period = False
+                        self.tube_move_center = True
+                        self.tube_move_right = False
+                        self.tube_move_left = False
+                        self.trial_data['tube_move_back'].append(self.t)
+                        DPxSetDoutValue(0, tongue_bitMask)
+                        DPxUpdateRegCache()
                         
                         
     def init_trial_data(self):
@@ -258,7 +264,6 @@ class DelaySacEyeProcess(multiprocessing.Process):
         needs to be called at the start of every trial
         '''
         self.trial_data = {}
-        self.trial_data['cal_matrix'] = [] # may be updated during exp.
         self.trial_data['eye_x_data'] = []
         self.trial_data['eye_y_data'] = []
         self.trial_data['eye_time_data'] = []
@@ -1172,7 +1177,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
         eye_data = self.data_rcvr.recv() # This will wait until the eye data arrives
         self.trial_data['eye_x_data'] = eye_data['eye_x_data']
         self.trial_data['eye_y_data'] = eye_data['eye_y_data']
-        self.trial_data['cal_matrix'] = eye_data['cal_matrix']
+        self.trial_data['left_cal_matrix'] = eye_data['left_cal_matrix']
+        self.trial_data['right_cal_matrix'] = eye_data['right_cal_matrix']
         self.trial_data['eye_time_data'] = eye_data['eye_time_data']
         self.trial_data['tongue_touch_times'] = eye_data['tongue_touch_times']
         self.trial_data['tube_move_out'] = eye_data['tube_move_out']
@@ -1260,7 +1266,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
         needs to be called at the start of every trial
         '''                                                                                                                                                                                                                   
         self.trial_data = {}
-        self.trial_data['cal_matrix'] = [] # may be updated during exp.
+        self.trial_data['right_cal_matrix'] = [] # may be updated during exp.
+        self.trial_data['left_cal_matrix'] = [] 
         self.trial_data['state_start_t_str_tgt_pursuit'] = []
         self.trial_data['state_start_t_str_tgt_present'] = []
         self.trial_data['state_start_t_str_tgt_fixation'] = []
