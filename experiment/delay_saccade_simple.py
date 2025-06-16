@@ -13,7 +13,7 @@ from psychopy import event as psychopy_event
 from pypixxlib import tracker
 from pypixxlib._libdpx import DPxOpen, TPxSetupTPxSchedule,TPxEnableFreeRun,DPxSelectDevice,DPxUpdateRegCache, DPxSetTPxAwake,\
                               TPxDisableFreeRun, DPxGetReg16,DPxGetTime,TPxBestPolyGetEyePosition, DPxSetDoutValue, TPxReadTPxData,\
-                              DPxSetTPxSleep, DPxClose, DPxGetDinValue
+                              DPxSetTPxSleep, DPxClose, DPxGetDinValue, DPxGetDoutValue
 
 from fsm_gui import FsmGui
 from target import TargetWidget
@@ -91,6 +91,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
         fsm_parameter, _ = lib.load_parameter('experiment',exp_parameter_filename,True,True,self.set_default_parameter,self.exp_name, self.main_parameter['current_monkey'])
 
         run_exp = False
+        self.trial_data = {};
         self.init_trial_data()
         self.trial_data['right_cal_matrix'] = cal_parameter['right_cal_matrix']
         self.trial_data['left_cal_matrix'] = cal_parameter['left_cal_matrix']
@@ -120,6 +121,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 DPxUpdateRegCache()
     
                 old_t = 0;
+                self.t = TPxBestPolyGetEyePosition(cal_data, raw_data)
                 random_signal_t = self.t
                 
                 dout_ch_3 = 0 # random signal
@@ -130,6 +132,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
                     #DPxSetDoutValue(self.dout_ch_1.value + (2**2)*dout_ch_3 + (2**4)*self.dout_ch_5.value, bitMask)
                     DPxUpdateRegCache()
                     
+            #print(f'self_t: {self.t}, rand_signal_t: {random_signal_t}')
             if (self.t - random_signal_t) > random_signal_flip_duration:
                 random_signal_t = self.t
                 if random.random() > 0.5:
@@ -144,6 +147,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
                
             # Fix indentation
             # Get eye status (blinking)
+            dout_value = int(DPxGetDoutValue())
             eye_status = DPxGetReg16(0x59A)
             right_eye_blink = bool(eye_status & (1 << 0)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
             left_eye_blink = bool(eye_status & (1 << 1)) # << 0- (animal's) right blink (pink); << 1-left blink (cyan)
@@ -190,6 +194,8 @@ class DelaySacEyeProcess(multiprocessing.Process):
             self.trial_data['eye_x_data'].append(self.eye_x)
             self.trial_data['eye_y_data'].append(self.eye_y)
             self.trial_data['eye_time_data'].append(self.t)
+            
+            self.trial_data['dout_value'].append(dout_value)
                             
             with self.real_time_data_Array.get_lock():
                 self.real_time_data_Array[0] = self.t
@@ -202,6 +208,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
             if self.end_trial_Event.is_set():
                 self.pull_data()
                 print("Sent eye data")
+                print(self.trial_data['left_cal_matrix'])
                 self.data_sndr.send(self.trial_data)
                 self.end_trial_Event.clear()
                 self.init_trial_data()
@@ -221,6 +228,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 
             din_value = bin(DPxGetDinValue())
             touch_detected = din_value[13] == '0'
+           
             
             if touch_detected and not touch_countdown_period:
             
@@ -232,7 +240,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
                               
             if touch_countdown_period:
                 if time.time() - countdown_start > fsm_parameter['tube_delay'] and not tube_moved_loop_skip:
-                    tube_move_loop_skip = True
+                    tube_moved_loop_skip = True
                     if np.random.rand() < fsm_parameter['tube_move_prob']:
                         print("Tube moved")
                         tube_moved = True
@@ -248,7 +256,6 @@ class DelaySacEyeProcess(multiprocessing.Process):
                     if tube_moved:
                         print("Tube moved back")
                         tube_moved = False
-                        tube_moved_loop_skip = False
                         touch_countdown_period = False
                         self.tube_move_center = True
                         self.tube_move_right = False
@@ -263,7 +270,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
         initializes a dict. of trial data;
         needs to be called at the start of every trial
         '''
-        self.trial_data = {}
+        #self.trial_data = {}
         self.trial_data['eye_x_data'] = []
         self.trial_data['eye_y_data'] = []
         self.trial_data['eye_time_data'] = []
@@ -283,6 +290,7 @@ class DelaySacEyeProcess(multiprocessing.Process):
         self.trial_data['device_time_data'] = []
         self.trial_data['din_data'] = []
         self.trial_data['dout_data'] = []
+        self.trial_data['dout_value'] = []
         
     def pull_data(self):
         '''
@@ -394,15 +402,6 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 
                 fsm_parameter, _ = lib.load_parameter('experiment',exp_parameter_filename,True,True,self.set_default_parameter,self.exp_name, self.main_parameter['current_monkey'])
                 cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])
-                arrow_param,_ = lib.load_parameter('','cue_parameter.json',True,False,lib.set_default_tgt_parameter,'arrow')
-                landolt_param,_ = lib.load_parameter('','cue_parameter.json',True,False,lib.set_default_tgt_parameter,'landolt')
-                p_a = fsm_parameter['ambiguity_prob']
-                
-                coherence_pairs = []
-                coherence_prob = [1 - p_a,p_a/4,p_a/4,p_a/4,0,0,p_a/4,0,0]
-                for counter_c in range(3):
-                    for counter_c_dir in range(3):
-                        coherence_pairs.append((counter_c,landolt_param['coherence'][counter_c_dir]))
                         
                 
                 self.fsm_parameter = fsm_parameter
@@ -525,6 +524,10 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 self.eye_speed = self.eye_data_Array[3]
                                 self.eye_blink = self.eye_data_Array[4]
                                 self.data_change_Event.clear()
+                                
+                                self.trial_data['tgt_time_data'].append(self.t)
+                                self.trial_data['tgt_x_data'].append(self.tgt_x)
+                                self.trial_data['tgt_y_data'].append(self.tgt_y)
                         
                         
                     if state == 'INIT':
@@ -888,7 +891,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_inter_time = self.t
 
                             if angle_diff < np.pi/2:
-                                self.tgt.pos = (self.end_x,self.end_y)              
+                                self.tgt_x = self.end_x
+                                self.tgt_y = self.end_y
+                                self.tgt.pos = (self.tgt_x,self.tgt_y)              
                                 #self.tgt.draw()
                                 self.draw_tgt(tgt_symbol,transparent = tgt_trans_bool)
                                 self.pd_tgt.draw()
@@ -983,7 +988,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         
                     if state == 'CORR_SACCADE':
                         eye_dist_from_end_tgt = np.sqrt((self.end_x-self.eye_x)**2 + (self.end_y-self.eye_y)**2)
-                        eye_dist_from_cue_tgt = np.sqrt((self.tgt_x-self.eye_x)**2 + (self.tgt_y-self.eye_y)**2)
+                        eye_dist_from_cue_tgt = np.sqrt((self.cue_x-self.eye_x)**2 + (self.cue_y-self.eye_y)**2)
                         cue_eye_vector = np.array([self.eye_x-self.cue_x, self.eye_y-self.cue_y]) 
                         
                         if eye_dist_from_end_tgt < fsm_parameter['rew_area']/2:
@@ -1151,6 +1156,10 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if self.next_trl_Event.is_set():
                             state = 'INIT'
                             
+                    #self.trial_data['tgt_time_data'].append(self.t)
+                    #self.trial_data['tgt_x_data'].append(self.tgt_x)
+                    #self.trial_data['tgt_y_data'].append(self.tgt_y)
+                    
                     # Update shared real time data
                     with self.real_time_data_Array.get_lock():
                         self.real_time_data_Array[0] = self.t
@@ -1194,7 +1203,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
         #self.trial_data['eye_r_blink_data'] = eye_data['eye_r_blink_data']
         self.trial_data['device_time_data'] = eye_data['device_time_data']
         self.trial_data['din_data'] = eye_data['din_data']
-        self.trial_data['dout_data'] = eye_data['din_data']
+        self.trial_data['dout_data'] = eye_data['dout_data']
+        self.trial_data['dout_value'] = eye_data['dout_value']
     
     def update_target(self,fsm_parameter):
         tgt_parameter, _ = lib.load_parameter('','tgt_parameter.json',True,False,lib.set_default_tgt_parameter,'tgt')
@@ -1296,6 +1306,10 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.trial_data['reward_fixation'] = []
         self.trial_data['change_tgt'] = []
         self.trial_data['transparent_tgt'] = []
+        
+        self.trial_data['tgt_time_data'] = []
+        self.trial_data['tgt_x_data'] = []
+        self.trial_data['tgt_y_data'] = []
         
         self.trial_data['eye_lx_raw_data'] = []
         self.trial_data['eye_ly_raw_data'] = []

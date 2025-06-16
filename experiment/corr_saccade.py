@@ -570,6 +570,7 @@ class CorrSacFsmProcess(multiprocessing.Process):
         self.trial_data['eye_r_blink_data'].extend(tpxData[0][9::22])
         self.trial_data['din_data'].extend(tpxData[0][7::22])
         self.trial_data['dout_data'].extend(tpxData[0][10::22])
+        
 
         TPxSetupTPxSchedule() # flushes data in DATAPixx buffer
     
