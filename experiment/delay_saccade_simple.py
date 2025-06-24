@@ -208,7 +208,6 @@ class DelaySacEyeProcess(multiprocessing.Process):
             if self.end_trial_Event.is_set():
                 self.pull_data()
                 print("Sent eye data")
-                print(self.trial_data['left_cal_matrix'])
                 self.data_sndr.send(self.trial_data)
                 self.end_trial_Event.clear()
                 self.init_trial_data()
@@ -229,10 +228,10 @@ class DelaySacEyeProcess(multiprocessing.Process):
             din_value = bin(DPxGetDinValue())
             touch_detected = din_value[13] == '0'
            
+           
             
             if touch_detected and not touch_countdown_period:
             
-                print("Touch detected")
                 touch_countdown_period = True
                 tube_moved = False
                 countdown_start = time.time()
@@ -242,7 +241,6 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 if time.time() - countdown_start > fsm_parameter['tube_delay'] and not tube_moved_loop_skip:
                     tube_moved_loop_skip = True
                     if np.random.rand() < fsm_parameter['tube_move_prob']:
-                        print("Tube moved")
                         tube_moved = True
                         self.tube_move_right = False
                         self.tube_move_left = True
@@ -254,7 +252,6 @@ class DelaySacEyeProcess(multiprocessing.Process):
                 if tube_moved_loop_skip and time.time() - countdown_start > fsm_parameter['tube_reset_time']:
                     tube_moved_loop_skip = False
                     if tube_moved:
-                        print("Tube moved back")
                         tube_moved = False
                         touch_countdown_period = False
                         self.tube_move_center = True
@@ -377,6 +374,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.mouse_tracker = psychopy_event.Mouse(win=self.window)
         self.window.flip()
         
+        self.write_Dout(1,1)
+        
         # Make targets
         #self.update_target()
         
@@ -388,6 +387,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
         # Process loop
         while not self.stop_fsm_process_Event.is_set():
             if not self.stop_exp_Event.is_set():
+                self.write_Dout(1,1)
                 # Update targets
                 # Load exp parameter
                 
@@ -403,9 +403,12 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 fsm_parameter, _ = lib.load_parameter('experiment',exp_parameter_filename,True,True,self.set_default_parameter,self.exp_name, self.main_parameter['current_monkey'])
                 cal_parameter, _ = lib.load_parameter('calibration','cal_parameter.json',True,True,lib.set_default_cal_parameter,'calibration',self.main_parameter['current_monkey'])
                         
+                #fsm_parameter['prem_wait_corrective'] = 0.175 # Only wait 100 ms if the saccade is made prematurely
+                #fsm_parameter['prem_wait_corrective'] = fsm_parameter['max_wait_for_fixation']
                 
                 self.fsm_parameter = fsm_parameter
                 self.update_target(fsm_parameter)
+                
                 
                 # Create target list
                 #target_pos_list = lib.make_corr_target(fsm_parameter)
@@ -419,6 +422,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                 fsm_parameter['max_wait_for_corrective'] = fsm_parameter['max_wait_for_fixation']
                 # Init. var
                 self.t = 0
+                t_mouse = 0
                 old_t = self.t
                 new_t = old_t
                 self.send_data_t = self.t
@@ -478,6 +482,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
             while not self.stop_fsm_process_Event.is_set() and run_exp: 
                 if self.stop_exp_Event.is_set():
                     run_exp = False
+                    self.write_Dout(1,1)
 
                     self.window.flip()
                     self.t = math.nan
@@ -498,36 +503,38 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         num_correct_no_cue = 0
                         break
                 
-                    if self.mouse_mode:
-                        t = time.time()
-                        time_diff = t - self.t
-                        if time_diff > 1e-2:
-                            self.t = t
-
-                            self.window.winHandle.dispatch_events()
-                            mouse_pos = self.mouse_tracker.getPos()
-                            eye_vel_x = (mouse_pos[0] - self.eye_x)/time_diff
-                            eye_vel_y = (mouse_pos[1] - self.eye_y)/time_diff
+                    if self.data_change_Event.is_set(): # Get the latest Vpixx data
+                        with self.eye_data_Array.get_lock():
+                            self.t = self.eye_data_Array[0]
                             
-                            self.eye_speed = np.sqrt(eye_vel_x**2 + eye_vel_y**2);
-                            self.eye_x = mouse_pos[0]
-                            self.eye_y = mouse_pos[1]
-                            #print(mouse_pos)
-                            self.eye_blink = False
-                            
-                    else:                    
-                        if self.data_change_Event.is_set(): # Get the latest EyeLink data
-                            with self.eye_data_Array.get_lock():
-                                self.t = self.eye_data_Array[0]
+                            if not self.mouse_mode:
                                 self.eye_x = self.eye_data_Array[1]
                                 self.eye_y = self.eye_data_Array[2]
                                 self.eye_speed = self.eye_data_Array[3]
                                 self.eye_blink = self.eye_data_Array[4]
-                                self.data_change_Event.clear()
+                               
                                 
-                                self.trial_data['tgt_time_data'].append(self.t)
-                                self.trial_data['tgt_x_data'].append(self.tgt_x)
-                                self.trial_data['tgt_y_data'].append(self.tgt_y)
+                            else:
+                                if self.t - t_mouse > 1e-2:
+                                    time_diff = self.t - t_mouse
+                                    t_mouse = self.t
+
+                                    self.window.winHandle.dispatch_events()
+                                    mouse_pos = self.mouse_tracker.getPos()
+                                    eye_vel_x = (mouse_pos[0] - self.eye_x)/time_diff
+                                    eye_vel_y = (mouse_pos[1] - self.eye_y)/time_diff
+                            
+                                    self.eye_speed = np.sqrt(eye_vel_x**2 + eye_vel_y**2);
+                                    self.eye_x = mouse_pos[0]
+                                    self.eye_y = mouse_pos[1]
+                                    #print(mouse_pos)
+                                    self.eye_blink = False
+                                    
+                        self.trial_data['tgt_time_data'].append(self.t)
+                        self.trial_data['tgt_x_data'].append(self.tgt_x)
+                        self.trial_data['tgt_y_data'].append(self.tgt_y)
+                            
+                        self.data_change_Event.clear()
                         
                         
                     if state == 'INIT':
@@ -751,14 +758,25 @@ class DelaySacFsmProcess(multiprocessing.Process):
 
                             state_start_time = self.t
                             state_inter_time = self.t
-                            #self.trial_data['state_start_t_cue_fixation'].append(self.t)
                             self.trial_data['state_start_t_delay_fixation'].append(self.t)
+                            premature_sac = True
+                            max_wait_for_corrective = fsm_parameter['prem_wait_corrective']
                             state = 'DELAY_FIXATION'
                             print('state = DELAY_FIXATION') 
                             
                     if state == 'DELAY_FIXATION':
                         eye_dist_from_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
-                        if eye_dist_from_tgt > fsm_parameter['fix_area']/2 or self.eye_blink:
+                        #print(f'Dist: {eye_dist_from_tgt}, Speed: {self.eye_speed}')
+                           
+                        if self.eye_speed >= fsm_parameter['sac_detect_threshold']:
+
+                            state_start_time = self.t
+                            state_inter_time = self.t
+                            self.trial_data['state_start_t_saccade'].append(self.t)
+                            print('STATE = SACCADE')
+                            state = 'SACCADE'  
+                                           
+                        elif eye_dist_from_tgt > fsm_parameter['fix_area']/2 or self.eye_blink:
                             state_start_time = self.t
                             state_inter_time = self.t
                             state = 'INCORRECT_SACCADE'
@@ -814,18 +832,22 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 self.draw_tgt(tgt_symbol,transparent=True)
                             
                                 
-                            self.tgt_x = self.cue_x
-                            self.tgt_y = self.cue_y
-                            self.tgt.pos = (self.tgt_x,self.tgt_y)
                             if fsm_parameter['num_tgt_display'] > 0:             
                                 #self.tgt.draw()
                                 self.draw_tgt(tgt_symbol,change_tgt=change_tgt,transparent = tgt_trans_bool)
                                 
                             self.tgt_display_time = self.t
                                     
-                            self.pd_tgt.draw()
+                            #self.pd_tgt.draw()
                             if delay_time > 1e-3:
                                 self.write_Dout(1,1)
+                            else:
+                                self.write_Dout(0,0)
+                                self.pd_tgt.draw()
+                                
+                            premature_sac = False
+                            max_wait_for_corrective = fsm_parameter['max_wait_for_corrective']
+                                
                             self.window.flip()    
                             self.trial_data['state_start_t_detect_sac_start'].append(self.t)
                             state = 'DETECT_SACCADE_START'
@@ -835,6 +857,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                     if state == 'DETECT_SACCADE_START':
                         eye_dist_from_start_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
                         #print(f'Dist: {eye_dist_from_tgt}, Speed: {self.eye_speed}')
+                           
                         if self.eye_speed >= fsm_parameter['sac_detect_threshold']:
                             rt = self.t - self.tgt_display_time
                             if tgt_trans_bool:
@@ -844,11 +867,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 
                             state_start_time = self.t
                             state_inter_time = self.t
-                            self.write_Dout(0,0)
-                            self.pd_tgt.draw()
-                            self.window.flip()
                             self.trial_data['state_start_t_saccade'].append(self.t)
-                            state = 'SACCADE'                 
+                            state = 'SACCADE'
+                                             
                         # If eye moves away from start target, reset trial after punishment period
                         elif eye_dist_from_start_tgt > fsm_parameter['fix_area']/2:
                             state_start_time = self.t
@@ -896,8 +917,14 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 self.tgt.pos = (self.tgt_x,self.tgt_y)              
                                 #self.tgt.draw()
                                 self.draw_tgt(tgt_symbol,transparent = tgt_trans_bool)
-                                self.pd_tgt.draw()
+                                if delay_time > 1e-3:
+                                    self.write_Dout(1,1)
+                                else:
+                                    self.write_Dout(0,0)
+                                    self.pd_tgt.draw()
+                                
                                 self.window.flip()
+                                
                                 self.trial_data['state_start_t_detect_sac_end'].append(self.t)
                                 state = 'DETECT_SACCADE_END'
                                 print('state = DETECT_SACCADE_END')
@@ -917,6 +944,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state = 'DETECT_SACCADE_END'
                             print('state = DETECT_SACCADE_END')
                             
+                        '''
                         if (self.t - state_start_time) >= fsm_parameter['pun_time']:
                             ######
                             # lib.playSound(200,0.1) # punishment beep
@@ -929,87 +957,63 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             self.window.flip()
                             print('state = STR_TARGET_PURSUIT')
                             state = 'STR_TARGET_PURSUIT'
-                    
+                        '''
+                            
                     if state == 'DETECT_SACCADE_END':
                         if (self.eye_speed < fsm_parameter['sac_on_off_threshold']) and (self.t-state_start_time > 0.005):#25):
-                        
-                            # Check if saccade made to cue
+                            # Check if saccade made to cue or end tgt.
                             eye_dist_from_cue_tgt = np.sqrt((self.cue_x-self.eye_x)**2 + (self.cue_y-self.eye_y)**2)
-
-                            if (eye_dist_from_cue_tgt < fsm_parameter['rew_area']/2):
+                            eye_dist_from_end_tgt = np.sqrt((self.end_x-self.eye_x)**2 + (self.end_y-self.eye_y)**2)
+                            
+                            #print(f'premature: {premature_sac}, max_wait: {max_wait_for_corrective}')
+                            #print(f'eye_dist_cue: {eye_dist_from_cue_tgt}, eye_dist_end: {eye_dist_from_end_tgt}')
+                            
+                            if ((eye_dist_from_cue_tgt < fsm_parameter['rew_area']/2) or (eye_dist_from_end_tgt < fsm_parameter['rew_area']/2)):
                                 state_start_time = self.t
                                 state_inter_time = self.t
-                                  
                                 self.trial_data['state_start_t_corr_sac'].append(self.t)
-                                if fsm_parameter['include_corr_sac']:
-                                    state = 'CORR_SACCADE'
-                                    print('state = CORR_SACCADE')
-                                else:
-                                    state = 'DELIVER_REWARD'
-                                    print('state = DELIVER_REWARD')
-                              
+                                print('state = CORR SACCADE')
+                                state = 'CORR_SACCADE'
+                                
                             else:
                                 state_start_time = self.t
                                 state_inter_time = self.t
-                                
-                                                                                                                                                                                                                                                                                                          
-                                wrong_tgt_indicator = True
-                                wrong_tgt_bool = False
-                                for counter_tgt in range(len(tgt_display_coords)):
-                                    distractor_pos = tgt_display_coords[counter_tgt]
-                                    eye_dist_from_distractor = np.sqrt((self.eye_x-distractor_pos[0])**2 + (self.eye_y-distractor_pos[1])**2)
-                                    if eye_dist_from_distractor < fsm_parameter['rew_area']/2:
-                                        remove_tgt_ind = counter_tgt
-                                        self.trial_data['distractor_x'].append(distractor_pos[0])
-                                        self.trial_data['distractor_y'].append(distractor_pos[1])
-                                        wrong_tgt_bool = True
-                                        
+                                self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
                                 self.write_Dout(1,1)
                                 self.window.flip()
-                                if wrong_tgt_bool:
-                                    #tgt_display_coords.pop(remove_tgt_ind)
-                                    self.trial_data['state_start_t_wrong_target'].append(self.t)
-                                    state = 'WRONG_TARGET'
-                                else: 
-                                    self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
-                                    state = 'INCORRECT_SACCADE'
-                                    inc_sac_indicator = True
-                             
-                          # If time runs out before saccade detected, reset the trial
-                        elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_fixation']:
+                                print('state = INCORRECT SACCADE') 
+                                state = 'INCORRECT_SACCADE'
+                                
+                        # If time runs out before saccade detected, reset the trial
+                        elif (self.t - state_start_time) >= max_wait_for_corrective:
+                            print(f'max wait corrective: {max_wait_for_corrective}')
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                            self.pd_tgt.draw()
                             self.write_Dout(0,0)
+                            self.pd_tgt.draw()
                             self.window.flip() 
                             state = 'STR_TARGET_PURSUIT'
                             
-                        
                     if state == 'CORR_SACCADE':
                         eye_dist_from_end_tgt = np.sqrt((self.end_x-self.eye_x)**2 + (self.end_y-self.eye_y)**2)
                         eye_dist_from_cue_tgt = np.sqrt((self.cue_x-self.eye_x)**2 + (self.cue_y-self.eye_y)**2)
-                        cue_eye_vector = np.array([self.eye_x-self.cue_x, self.eye_y-self.cue_y]) 
+                        cue_eye_vector = np.array([self.eye_x-self.cue_x, self.eye_y-self.cue_y])
                         
                         if eye_dist_from_end_tgt < fsm_parameter['rew_area']/2:
                             state_start_time = self.t
                             state_inter_time = self.t
-                            self.trial_data['state_start_t_deliver_rew'].append(self.t)
-                            state = 'DELIVER_REWARD'
-                            print('state = DELIVER_REWARD')
+                            if premature_sac:
+                                self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
+                                state = 'INCORRECT_SACCADE'
+                                print('state = INCORRECT SACCADE premature sac')
+                                self.write_Dout(1,1)
+                                self.window.flip()
+                            else:
+                                self.trial_data['state_start_t_deliver_rew'].append(self.t)
+                                state = 'DELIVER_REWARD'
+                                print('state = DELIVER_REWARD')
                                 
-                        elif (self.t - state_start_time) >= fsm_parameter['max_wait_for_corrective']:
-                            state_start_time = self.t
-                            state_inter_time = self.t
-                            self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
-                            self.pd_tgt.draw()
-                            self.write_Dout(0,0)
-                            self.window.flip() 
-                            state = 'STR_TARGET_PURSUIT'
-                            
-                        
-                        # If animal makes random saccade instead of corrective one, reset trial
-                        # The line_dist formula ensures that the animal is not penalized as long as it stays close to the line between the end target and the cue target
                         elif eye_dist_from_cue_tgt > fsm_parameter['rew_area']/2:
                             line_dist = abs((self.end_y-self.cue_y)*self.eye_x - (self.end_x-self.cue_x)*self.eye_y + self.end_x*self.cue_y - self.end_y*self.cue_x)/np.linalg.norm(self.cue_end_vector)
                             if (np.dot(self.cue_end_vector,cue_eye_vector)) < 0 or (line_dist > fsm_parameter['rew_area']/2):
@@ -1021,7 +1025,17 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 self.write_Dout(0,0)
                                 self.window.flip() 
                                 state = 'STR_TARGET_PURSUIT'
-                        
+                                
+                        elif (self.t - state_start_time) >= max_wait_for_corrective:
+                            print(f'max wait for corrective: {max_wait_for_corrective}')
+                            state_start_time = self.t
+                            state_inter_time = self.t
+                            self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
+                            self.pd_tgt.draw()
+                            self.write_Dout(0,0)
+                            self.window.flip() 
+                            state = 'STR_TARGET_PURSUIT'
+
                             
                     if state == 'DELIVER_REWARD':
                         
@@ -1050,8 +1064,11 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             #self.draw_cue(cue_type,fsm_parameter['center_cue'],False,False,sac_right,[self.cue_x,self.cue_y])
                             self.draw_tgt(tgt_symbol,change_tgt=change_tgt,transparent = tgt_trans_bool)
                            
-                        
-                        self.write_Dout(1,1)
+                        if delay_time > 1e-3:
+                            self.write_Dout(0,0)
+                            self.pd_tgt.draw()
+                        else:
+                            self.write_Dout(1,1)
                         self.window.flip()
                         state = 'END_TARGET_FIXATION'  
                         print('state = END_TARGET_FIXATION')
@@ -1061,6 +1078,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if ((self.t - state_inter_time) >= fsm_parameter['min_fix_time']):
                             state_start_time = self.t
                             state_inter_time = self.t
+                            self.write_Dout(1,1)
                             self.trial_data['state_start_t_trial_success'].append(self.t)
                             self.window.flip() # remove all targets
                             state = 'TRIAL_SUCCESS'
@@ -1147,7 +1165,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             trial_num += 1
                             self.init_trial_data()  
                             
-                            if not fsm_parameter['manual_trials']:
+                            if not fsm_parameter['manual_trls']:
                                 state = 'INIT'
                             else:
                                 state = 'WAIT_FOR_NEXT_TRIAL'
@@ -1215,7 +1233,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                       lineColor=tgt_parameter['line_color'],fillColor=tgt_parameter['fill_color'],
                       lineWidth=tgt_parameter['line_width'])
         self.tgt.draw() # draw once already, because the first draw may be slower - Poth, 2018   
-        self.pd_tgt = visual.Rect(win=self.window, width=pd_tgt_parameter['size'],height=pd_tgt_parameter['size'], units='deg', 
+        self.pd_tgt = visual.Rect(win=self.window, width=pd_tgt_parameter['width'],height=pd_tgt_parameter['height'], units='deg', 
                       lineColor=pd_tgt_parameter['line_color'],fillColor=pd_tgt_parameter['fill_color'],
                       lineWidth=pd_tgt_parameter['line_width'])
         self.pd_tgt.pos = pd_tgt_parameter['pos']
@@ -1368,7 +1386,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                      'pump_to_use':1,
                      'num_forced_beginning':0,
                      'tgt_prob':1,
-                     'manual_trials':False,
+                     'manual_trls':False,
                      'post_delay':0,
                      'max_try':999,
                      'opacity':1
@@ -1471,8 +1489,8 @@ class DelaySacGui(FsmGui):
         
         self.min_delay_QDoubleSpinBox.valueChanged.connect(self.min_delay_QDoubleSpinBox_valueChanged)
         self.max_delay_QDoubleSpinBox.valueChanged.connect(self.max_delay_QDoubleSpinBox_valueChanged)
-        self.num_tgt_display_QDoubleSpinBox.valueChanged.connect(self.num_tgt_display_QDoubleSpinBox_valueChanged)
-        self.random_tgt_QCheckBox.stateChanged.connect(self.random_tgt_QCheckBox_stateChanged)
+        #self.num_tgt_display_QDoubleSpinBox.valueChanged.connect(self.num_tgt_display_QDoubleSpinBox_valueChanged)
+        #self.random_tgt_QCheckBox.stateChanged.connect(self.random_tgt_QCheckBox_stateChanged)
         
         self.include_corr_sac_QCheckBox.stateChanged.connect(self.include_corr_sac_QCheckBox_stateChanged)
         
@@ -1484,6 +1502,8 @@ class DelaySacGui(FsmGui):
         self.manual_trial_QCheckBox.stateChanged.connect(self.manual_trial_QCheckBox_stateChanged)
         self.max_attempt_QDoubleSpinBox.valueChanged.connect(self.max_attempt_QDoubleSpinBox_valueChanged)
         self.tgt_opacity_QDoubleSpinBox.valueChanged.connect(self.tgt_opacity_QDoubleSpinBox_valueChanged)
+        
+        self.prem_wait_corr_QDoubleSpinBox.valueChanged.connect(self.prem_wait_corr_QDoubleSpinBox_valueChanged)
         
         self.tube_move_prob_QDoubleSpinBox.valueChanged.connect(self.tube_move_prob_QDoubleSpinBox_valueChanged)
         self.tube_delay_QDoubleSpinBox.valueChanged.connect(self.tube_delay_QDoubleSpinBox_valueChanged)
@@ -1499,7 +1519,7 @@ class DelaySacGui(FsmGui):
     def toolbar_run_QAction_triggered(self):
         # Check to see if plot process ready
         self.fsm_to_plot_priority_socket.send_pyobj(('confirm_connection',0))
-        if self.exp_parameter['manual_trials']:
+        if self.exp_parameter['manual_trls']:
             self.toolbar_next_trl_QAction.setEnabled(True)
         self.next_trl_Event.clear()
         # Wait for confirmation for 5 sec.
@@ -1736,7 +1756,11 @@ class DelaySacGui(FsmGui):
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def manual_trial_QCheckBox_stateChanged(self):
-        self.exp_parameter['manual_trials'] = self.manual_trial_QCheckBox.isChecked()
+        self.exp_parameter['manual_trls'] = self.manual_trial_QCheckBox.isChecked()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    @pyqtSlot()
+    def prem_wait_corr_QDoubleSpinBox_valueChanged(self):
+        self.exp_parameter['prem_wait_corrective'] = self.prem_wait_corr_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
     def max_attempt_QDoubleSpinBox_valueChanged(self):
@@ -1747,7 +1771,7 @@ class DelaySacGui(FsmGui):
         self.exp_parameter['tgt_opacity'] = self.tgt_opacity_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
-    def tube_move_prob_QDoubleSpinBox_valueChanged(self):
+    def tube_move_prob_QDoubleSpinBox_valueChanged(self):                                                                        
         self.exp_parameter['tube_move_prob'] = self.tube_move_prob_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
     @pyqtSlot()
@@ -1860,7 +1884,7 @@ class DelaySacGui(FsmGui):
         self.min_fix_time_QDoubleSpinBox.setValue(0.1)
         self.min_fix_time_QDoubleSpinBox.setMaximum(10)
         self.min_fix_time_QDoubleSpinBox.setSingleStep(0.1)
-        self.min_fix_time_QDoubleSpinBox.setDecimals(1)
+        self.min_fix_time_QDoubleSpinBox.setDecimals(2)
         self.min_fix_time_QHBoxLayout.addWidget(self.min_fix_time_QDoubleSpinBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.min_fix_time_QHBoxLayout)
         
@@ -2107,7 +2131,7 @@ class DelaySacGui(FsmGui):
         self.pump_to_use_QComboBox.addItems(['1','2'])
         self.pump_to_use_QHBoxLayout.addWidget(self.pump_to_use_QComboBox)
         self.sidepanel_params_1_tab_QVBoxLayout.addLayout(self.pump_to_use_QHBoxLayout)
-        
+        '''
         self.num_tgt_display_QHBoxLayout = QHBoxLayout()
         self.num_tgt_display_QLabel = QLabel("Number of Targets Displayed:")
         self.num_tgt_display_QLabel.setAlignment(Qt.AlignRight)
@@ -2122,7 +2146,7 @@ class DelaySacGui(FsmGui):
         
         self.random_tgt_QCheckBox = QCheckBox('Randomize Targets')
         self.sidepanel_params_3_tab_QVBoxLayout.addWidget(self.random_tgt_QCheckBox)
-        
+        '''
         
         self.include_corr_sac_QCheckBox = QCheckBox('Include Corrective Saccades')
         self.sidepanel_params_2_tab_QVBoxLayout.addWidget(self.include_corr_sac_QCheckBox)
@@ -2197,6 +2221,17 @@ class DelaySacGui(FsmGui):
         self.tgt_opacity_QDoubleSpinBox.setDecimals(2)
         self.tgt_opacity_QHBoxLayout.addWidget(self.tgt_opacity_QDoubleSpinBox)
         self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.tgt_opacity_QHBoxLayout)
+        
+        self.prem_wait_corr_QHBoxLayout = QHBoxLayout()
+        self.prem_wait_corr_QLabel = QLabel("Max Wait for Premature Corrective: ")
+        self.prem_wait_corr_QLabel.setAlignment(Qt.AlignRight)
+        self.prem_wait_corr_QHBoxLayout.addWidget(self.prem_wait_corr_QLabel)
+        self.prem_wait_corr_QDoubleSpinBox = QDoubleSpinBox()
+        self.prem_wait_corr_QDoubleSpinBox.setValue(0)
+        self.prem_wait_corr_QDoubleSpinBox.setSingleStep(0.1)
+        self.prem_wait_corr_QDoubleSpinBox.setDecimals(3)
+        self.prem_wait_corr_QHBoxLayout.addWidget(self.prem_wait_corr_QDoubleSpinBox)
+        self.sidepanel_params_3_tab_QVBoxLayout.addLayout(self.prem_wait_corr_QHBoxLayout)
         
         self.tube_move_prob_QHBoxLayout = QHBoxLayout()
         self.tube_move_prob_QLabel = QLabel("Move Tube Probability: ")
@@ -2286,7 +2321,7 @@ class DelaySacGui(FsmGui):
                          'pump_to_use':1,
                          'num_forced_beginning':0,
                          'tgt_prob':1,
-                         'manual_trials':False,
+                         'manual_trls':False,
                          'max_try':999,
                          'opacity':1
                          }
@@ -2320,14 +2355,15 @@ class DelaySacGui(FsmGui):
         self.pump_switch_QDoubleSpinBox.setValue(self.exp_parameter['pump_switch_interval'])
         self.min_delay_QDoubleSpinBox.setValue(self.exp_parameter['min_delay'])
         self.max_delay_QDoubleSpinBox.setValue(self.exp_parameter['max_delay'])
-        self.num_tgt_display_QDoubleSpinBox.setValue(self.exp_parameter['num_tgt_display'])
+        #self.num_tgt_display_QDoubleSpinBox.setValue(self.exp_parameter['num_tgt_display'])
         self.max_attempt_QDoubleSpinBox.setValue(self.exp_parameter['max_try'])
-        self.random_tgt_QCheckBox.setChecked(self.exp_parameter['randomize_targets'])
+        #self.random_tgt_QCheckBox.setChecked(self.exp_parameter['randomize_targets'])
+        self.prem_wait_corr_QDoubleSpinBox.setValue(self.exp_parameter['prem_wait_corrective'])
         
         self.pump_to_use_QComboBox.setCurrentIndex(self.exp_parameter['pump_to_use'] -1)
         
         self.include_corr_sac_QCheckBox.setChecked(self.exp_parameter['include_corr_sac'])
-        self.manual_trial_QCheckBox.setChecked(self.exp_parameter['manual_trials'])
+        self.manual_trial_QCheckBox.setChecked(self.exp_parameter['manual_trls'])
         
         self.second_dir_QDoubleSpinBox.setValue(self.exp_parameter['second_dir'])
         self.dir_switch_interval_QDoubleSpinBox.setValue(self.exp_parameter['dir_switch_interval'])
