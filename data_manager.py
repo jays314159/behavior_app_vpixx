@@ -51,7 +51,8 @@ class DataManager(QRunnable):
         if group_name in data_file:
             trial_grp = data_file[group_name]
             for trial_key,_ in trial_grp.items():
-                self.trial_data[trial_key] = np.append(trial_grp[trial_key][:], self.trial_data[trial_key])
+                if not (trial_key == 'left_cal_matrix' or trial_key == 'right_cal_matrix'):
+                    self.trial_data[trial_key] = np.append(trial_grp[trial_key][:], self.trial_data[trial_key])
             del data_file[group_name]
 
         if group_name in data_file:
