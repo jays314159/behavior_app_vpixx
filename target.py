@@ -22,6 +22,7 @@ class TargetWidget(QWidget,QObject):
           
     def init_signals(self):
         self.tgt_size_QDoubleSpinBox.valueChanged.connect(self.tgt_size_QDoubleSpinBox_valueChanged)
+        self.tgt_height_QDoubleSpinBox.valueChanged.connect(self.tgt_height_QDoubleSpinBox_valueChanged)
         self.line_width_QDoubleSpinBox.valueChanged.connect(self.line_width_QDoubleSpinBox_valueChanged)
         self.fill_color_QComboBox.currentTextChanged.connect(self.fill_color_QComboBox_currentTextChanged)
         self.line_color_QComboBox.currentTextChanged.connect(self.line_color_QComboBox_currentTextChanged)
@@ -36,7 +37,7 @@ class TargetWidget(QWidget,QObject):
         
         self.tgt_size_QHBoxLayout = QHBoxLayout()
         self.main_QVBoxLayout.addLayout(self.tgt_size_QHBoxLayout)
-        self.tgt_size_QLabel = QLabel('Target size (deg):')
+        self.tgt_size_QLabel = QLabel('Target Width (deg):')
         self.tgt_size_QLabel.setAlignment(Qt.AlignRight)
         self.tgt_size_QHBoxLayout.addWidget(self.tgt_size_QLabel)
         self.tgt_size_QDoubleSpinBox = QDoubleSpinBox()
@@ -45,6 +46,18 @@ class TargetWidget(QWidget,QObject):
         self.tgt_size_QDoubleSpinBox.setSingleStep(0.01)
         self.tgt_size_QDoubleSpinBox.setValue(0.2)
         self.tgt_size_QHBoxLayout.addWidget(self.tgt_size_QDoubleSpinBox)
+        
+        self.tgt_height_QHBoxLayout = QHBoxLayout()
+        self.main_QVBoxLayout.addLayout(self.tgt_height_QHBoxLayout)
+        self.tgt_height_QLabel = QLabel('Target Height (deg):')
+        self.tgt_height_QLabel.setAlignment(Qt.AlignRight)
+        self.tgt_height_QHBoxLayout.addWidget(self.tgt_height_QLabel)
+        self.tgt_height_QDoubleSpinBox = QDoubleSpinBox()
+        self.tgt_height_QDoubleSpinBox.setRange(0.01, 20)
+        self.tgt_height_QDoubleSpinBox.setDecimals(3)
+        self.tgt_height_QDoubleSpinBox.setSingleStep(0.01)
+        self.tgt_height_QDoubleSpinBox.setValue(0.2)
+        self.tgt_height_QHBoxLayout.addWidget(self.tgt_height_QDoubleSpinBox)
         
         self.line_width_QHBoxLayout = QHBoxLayout()
         self.main_QVBoxLayout.addLayout(self.line_width_QHBoxLayout)
@@ -134,8 +147,12 @@ class TargetWidget(QWidget,QObject):
         self.main_QVBoxLayout.addWidget(self.save_QPushButton)
     #%% SLOTS
     def tgt_size_QDoubleSpinBox_valueChanged(self):
-        self.parameter['size'] = self.tgt_size_QDoubleSpinBox.value()
+        self.parameter['width'] = self.tgt_size_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    def tgt_height_QDoubleSpinBox_valueChanged(self):
+        self.parameter['height'] = self.tgt_height_QDoubleSpinBox.value()
+        self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
+    
     def line_width_QDoubleSpinBox_valueChanged(self):
         self.parameter['line_width'] = self.line_width_QDoubleSpinBox.value()
         self.save_QPushButton.setStyleSheet('background-color: #FFCC00')
@@ -166,6 +183,8 @@ class TargetWidget(QWidget,QObject):
         use saved parameters to set GUI values
         '''
         self.tgt_size_QDoubleSpinBox.setValue(self.parameter['size'])
+        #self.tgt_width_QDoubleSpinBox.setValue(self.parameter['width'])
+        self.tgt_height_QDoubleSpinBox.setValue(self.parameter['height'])
         self.line_width_QDoubleSpinBox.setValue(self.parameter['line_width'])
         self.fill_color_QComboBox.setCurrentText(self.parameter['fill_color'])
         self.line_color_QComboBox.setCurrentText(self.parameter['line_color'])
