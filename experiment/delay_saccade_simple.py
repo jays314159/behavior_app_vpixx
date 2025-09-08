@@ -569,9 +569,20 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         
                         self.cue_end_vector = np.array([self.end_x-self.cue_x, self.end_y-self.cue_y])
                         tgt_symbol = 'cross'
+                        
+                        
+                        if fsm_parameter['include_corr_sac']:
+                            if fsm_parameter['min_delay'] > 0:
+                                #include_corr_sac = bool(random.randint(0,1))
+                                include_corr_sac = True
+                            else:
+                                include_corr_sac = True
+                        else:
+                            include_corr_sac = False
+                        self.trial_data['include_corr_sac'].append(include_corr_sac)
                             
                         # Send target data
-                        if fsm_parameter['include_corr_sac']:
+                        if include_corr_sac:
                             self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y,self.end_x,self.end_y)))
                         else:
                             self.fsm_to_gui_sndr.send(('tgt_data',(self.cue_x,self.cue_y)))
@@ -650,6 +661,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         inc_sac_indicator = False
   
                         false_start_bool = False
+                        first_attempt = True
                         num_try = 0
                         
                         state_start_time = self.t
@@ -773,6 +785,9 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_saccade'].append(self.t)
+                            if first_attempt:
+                                false_start_bool = True
+                            first_attempt = False
                             print('STATE = SACCADE')
                             state = 'SACCADE'  
                                            
@@ -780,6 +795,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             state = 'INCORRECT_SACCADE'
+                            
+                            first_attempt = False
                             
                             if not wrong_tgt_bool:
                                 false_start_bool = True
@@ -795,6 +812,8 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             state_start_time = self.t
                             state_inter_time = self.t
                             
+                            first_attempt = False
+                            
                             self.trial_data['state_start_t_saccade_go_cue'].append(self.t)
                             state = 'SACCADE_GO_CUE'
                             print('state = SACCADE_GO_CUE')
@@ -802,6 +821,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         if (self.t-state_start_time) >= fsm_parameter['max_wait_for_fixation']:
                             state_start_time = self.t
                             state_inter_time = self.t
+                            first_attempt = False
                             self.trial_data['state_start_t_str_tgt_pursuit'].append(self.t)
                             self.write_Dout(0,0)
                             self.pd_tgt.draw()
@@ -859,12 +879,13 @@ class DelaySacFsmProcess(multiprocessing.Process):
                         #print(f'Dist: {eye_dist_from_tgt}, Speed: {self.eye_speed}')
                            
                         if self.eye_speed >= fsm_parameter['sac_detect_threshold']:
+                            '''
                             rt = self.t - self.tgt_display_time
                             if tgt_trans_bool:
                                 self.avg_rt_ls.append(rt)
                             else:
                                 self.avg_rt_hs.append(rt)
-                                
+                            '''    
                             state_start_time = self.t
                             state_inter_time = self.t
                             self.trial_data['state_start_t_saccade'].append(self.t)
@@ -898,7 +919,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                     
                     if state == 'SACCADE':
                         eye_dist_from_start_tgt = np.sqrt((self.start_x-self.eye_x)**2 + (self.start_y-self.eye_y)**2)
-                        if fsm_parameter['include_corr_sac'] and eye_dist_from_start_tgt > fsm_parameter['fix_area']/2:
+                        if include_corr_sac and eye_dist_from_start_tgt > fsm_parameter['fix_area']/2:
                             # Check to see if saccade is in the right direction
                             target_dir_vector = [self.cue_x-self.start_x,self.cue_y-self.start_y]
                             unit_target_dir_vector = target_dir_vector/np.linalg.norm(target_dir_vector)
@@ -935,7 +956,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
                                 state = 'INCORRECT_SACCADE'
                                 print('state = INCORRECT SACCADE')
                               
-                        if not fsm_parameter['include_corr_sac']:  
+                        if not include_corr_sac:  
                             self.pd_tgt.draw()
                             self.window.flip()
                             state_start_time = self.t
@@ -968,12 +989,26 @@ class DelaySacFsmProcess(multiprocessing.Process):
                             #print(f'premature: {premature_sac}, max_wait: {max_wait_for_corrective}')
                             #print(f'eye_dist_cue: {eye_dist_from_cue_tgt}, eye_dist_end: {eye_dist_from_end_tgt}')
                             
-                            if ((eye_dist_from_cue_tgt < fsm_parameter['rew_area']/2) or (eye_dist_from_end_tgt < fsm_parameter['rew_area']/2)):
+                            if ((eye_dist_from_cue_tgt < fsm_parameter['rew_area']/2) or (eye_dist_from_end_tgt < fsm_parameter['rew_area']/2) and include_corr_sac):
+                                
                                 state_start_time = self.t
                                 state_inter_time = self.t
-                                self.trial_data['state_start_t_corr_sac'].append(self.t)
-                                print('state = CORR SACCADE')
-                                state = 'CORR_SACCADE'
+                                
+                                if include_corr_sac:
+                                    self.trial_data['state_start_t_corr_sac'].append(self.t)
+                                    print('state = CORR SACCADE')
+                                    state = 'CORR_SACCADE'
+                                else:
+                                    if premature_sac:
+                                        self.trial_data['state_start_t_incorrect_saccade'].append(self.t)
+                                        state = 'INCORRECT_SACCADE'
+                                        print('state = INCORRECT SACCADE premature sac')
+                                        self.write_Dout(1,1)
+                                        self.window.flip()
+                                    else:
+                                        self.trial_data['state_start_t_deliver_rew'].append(self.t)
+                                        state = 'DELIVER_REWARD'
+                                        print('state = DELIVER_REWARD')
                                 
                             else:
                                 state_start_time = self.t
@@ -1324,7 +1359,7 @@ class DelaySacFsmProcess(multiprocessing.Process):
         self.trial_data['reward_fixation'] = []
         self.trial_data['change_tgt'] = []
         self.trial_data['transparent_tgt'] = []
-        
+        self.trial_data['include_corr_sac'] = []
         self.trial_data['tgt_time_data'] = []
         self.trial_data['tgt_x_data'] = []
         self.trial_data['tgt_y_data'] = []
