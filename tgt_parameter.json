@@ -1,0 +1,22 @@
+{
+    "tgt": {
+        "size": 0.5,
+        "line_width": 1.5,
+        "fill_color": "black",
+        "line_color": "blue",
+        "pos": [
+            0,
+            0
+        ]
+    },
+    "pd_tgt": {
+        "size": 4.0,
+        "line_width": 1.5,
+        "fill_color": "black",
+        "line_color": "blue",
+        "pos": [
+            27.0,
+            -14.0
+        ]
+    }
+}
